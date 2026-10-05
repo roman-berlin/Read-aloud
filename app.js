@@ -532,7 +532,7 @@ function renderVoiceOptions() {
 function renderNotice() {
   if (!book) { el.notice.hidden = true; return; }
   if (!synth) {
-    el.notice.innerHTML = '<strong>This browser has no speech engine.</strong> Open this page in Chrome, Edge, Safari or Firefox.';
+    el.notice.innerHTML = '<strong>This viewer has no speech engine.</strong> Open this page in Chrome or Safari (share icon → open in browser).';
     el.notice.hidden = false;
     return;
   }
@@ -685,7 +685,8 @@ window.addEventListener('pagehide', () => {
 });
 
 if (!synth) {
-  showError('This browser has no speech engine (Web Speech API). Open this page in Chrome, Edge, Safari or Firefox.');
+  showError('This viewer has no speech engine, so nothing can be read aloud here. If you opened this page inside another app, ' +
+    'open it in Chrome or Safari instead (share icon → open in browser) — file upload also works only there.');
 } else {
   synth.addEventListener('voiceschanged', refreshVoices);
   // Safari may never fire voiceschanged and some engines deliver voices seconds later: poll for a while.
