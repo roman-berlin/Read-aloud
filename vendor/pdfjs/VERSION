@@ -1,0 +1,4 @@
+pdfjs-dist 6.4.299 — legacy build (works on older Safari/iOS too)
+Source: https://registry.npmjs.org/pdfjs-dist/-/pdfjs-dist-6.4.299.tgz
+Files: legacy/build/pdf.min.mjs, legacy/build/pdf.worker.min.mjs, LICENSE (Apache-2.0)
+To upgrade: download the tarball for the new version, copy the same three files here, update this note.

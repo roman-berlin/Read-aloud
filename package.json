@@ -1,0 +1,14 @@
+{
+  "name": "audiobook-reader",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Static, browser-only app that reads a PDF or .txt book aloud with the Web Speech API.",
+  "type": "module",
+  "scripts": {
+    "start": "bun serve.ts",
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.56.1"
+  }
+}
