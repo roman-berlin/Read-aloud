@@ -22,7 +22,7 @@ browser — the file never leaves the computer.
 
 ## Run it
 
-Needs [Bun](https://bun.sh) (already used by this repo). From this folder:
+Needs [Bun](https://bun.sh). From the repository root:
 
 ```bash
 bun run start
@@ -45,8 +45,8 @@ and reads with no internet connection.
   desktop and Android.
 
 **Vercel:** import this repository in the Vercel dashboard (Add New → Project),
-set *Root Directory* to `audiobook-reader`, *Framework Preset* to *Other*, leave
-build and output empty, and pick the branch to deploy. `vercel.json` here only
+set *Framework Preset* to *Other*, leave root, build and output at their
+defaults, and deploy `main`. `vercel.json` here only
 sets cache headers (the service worker is never cached, pdf.js is cached for a
 year). There is nothing to build.
 
