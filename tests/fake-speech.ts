@@ -17,7 +17,8 @@ export const ALL_VOICES: FakeVoice[] = [
 ];
 
 export type SpeakEntry = { type: 'speak'; text: string; lang: string; voice: string | null; rate: number };
-export type LogEntry = SpeakEntry | { type: 'cancel' } | { type: 'pause' } | { type: 'resume' };
+export type CancelEntry = { type: 'cancel'; text: string | null; boundaries: number };
+export type LogEntry = SpeakEntry | CancelEntry | { type: 'pause' } | { type: 'resume' };
 
 export type FakeSpeechOptions = { voices?: FakeVoice[]; msPerWord?: number; voicesDelayMs?: number };
 
@@ -71,7 +72,9 @@ function fakeSpeechInit(cfg: { voices: FakeVoice[]; msPerWord: number; voicesDel
       if (!live) startNext();
     }
     cancel() {
-      log.push({ type: 'cancel' });
+      // Record what was cut off and how many words of it had been spoken, so a test can state
+      // exactly what a correct resume must say without depending on timing.
+      log.push({ type: 'cancel', text: live ? live.text : null, boundaries: live ? (live.boundaries as number) : 0 });
       clearTimers();
       const u = live;
       live = null;

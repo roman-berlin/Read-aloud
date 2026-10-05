@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { fileURLToPath } from 'node:url';
-import { ALL_VOICES, installFakeSpeech, spoken, ttsLog, type FakeSpeechOptions } from './fake-speech';
+import { ALL_VOICES, installFakeSpeech, spoken, ttsLog, type CancelEntry, type FakeSpeechOptions } from './fake-speech';
 
 const SAMPLES = new Set(['hebrew.pdf', 'english.txt', 'russian.txt']); // shipped with the app, also used as fixtures
 const fx = (name: string) => fileURLToPath(new URL(SAMPLES.has(name) ? `../samples/${name}` : `./fixtures/${name}`, import.meta.url));
@@ -51,21 +51,23 @@ test('English .txt: title, language, voices, and Play / Pause / Resume / Stop', 
   await pauseBtn(page).click();
   await expect(status(page)).toHaveText('Paused');
   const atPause = await ttsLog(page);
-  expect(atPause[atPause.length - 1].type).toBe('cancel');
+  const cancel = atPause[atPause.length - 1] as CancelEntry;
+  expect(cancel.type).toBe('cancel');
+  expect(cancel.text).not.toBeNull(); // something was being spoken when Pause was pressed
   const spokenAtPause = (await spoken(page)).length;
   await page.waitForTimeout(400);
   expect((await ttsLog(page)).length).toBe(atPause.length);
 
-  // Resume: continues the interrupted segment from the last spoken word, not from the top
+  // Resume: continues the cut-off segment from its last spoken word, not from the top
   await playBtn(page).click();
   await expect(status(page)).toHaveText('Playing');
   await expect.poll(() => spokenCount(page)).toBeGreaterThan(spokenAtPause);
-  const all = await spoken(page);
-  const interrupted = all[spokenAtPause - 1];
-  const resumed = all[spokenAtPause];
+  const resumed = (await spoken(page))[spokenAtPause];
+  const interrupted = cancel.text as string;
   expect(resumed.text.length).toBeGreaterThan(0);
-  expect(resumed.text.length).toBeLessThan(interrupted.text.length); // not from the top of the segment
-  expect(interrupted.text.endsWith(resumed.text)).toBe(true);
+  expect(interrupted.endsWith(resumed.text)).toBe(true);
+  if (cancel.boundaries > 0) expect(resumed.text.length).toBeLessThan(interrupted.length); // words already heard are not repeated
+  else expect(resumed.text).toBe(interrupted); // cut off before its first word: the whole segment is due
 
   // Stop: back to the beginning, engine cancelled and silent
   await stopBtn(page).click();
