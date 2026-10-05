@@ -94,6 +94,28 @@ function pageText(items) {
   return out;
 }
 
+// Some Hebrew PDFs store each line's glyphs in logical order and place them right-to-left,
+// and pdf.js's visual-to-logical pass then mirrors every line: final-form letters (ך ם ן ף ץ)
+// end up at the START of words and the full stop at the start of the line. Correct Hebrew
+// never starts a word with a final letter, so that is the signal.
+const HEBREW_FINAL = /[\u05DA\u05DD\u05DF\u05E3\u05E5]/;
+function hebrewLooksMirrored(text) {
+  let atStart = 0, atEnd = 0;
+  for (const w of text.match(/[\u05D0-\u05EA]{2,}/g) || []) {
+    if (HEBREW_FINAL.test(w[0])) atStart++;
+    if (HEBREW_FINAL.test(w[w.length - 1])) atEnd++;
+  }
+  return atStart >= 3 && atStart > atEnd;
+}
+// Mirror a line back (keeping diacritics on their letters), then restore the inner order of
+// Latin/digit runs, which were already correct and must not be flipped.
+const LTR_RUN = /[A-Za-z0-9\u00C0-\u024F](?:[A-Za-z0-9\u00C0-\u024F .,'’"&/:%+-]*[A-Za-z0-9\u00C0-\u024F])?/g;
+function unmirrorLine(line) {
+  if (!/[\u0590-\u05FF]/.test(line)) return line;
+  const mirrored = (line.match(/\P{M}\p{M}*/gu) || []).reverse().join('');
+  return mirrored.replace(LTR_RUN, (run) => Array.from(run).reverse().join(''));
+}
+
 async function readPdf(file, onProgress) {
   const data = new Uint8Array(await file.arrayBuffer());
   const loadingTask = pdfjsLib.getDocument({ data });
@@ -126,6 +148,7 @@ async function readPdf(file, onProgress) {
     if (latinExt > 50 && latinExt > ascii) {
       throw new Error("This PDF's text layer is unreadable (it was made with a non-Unicode font). It needs OCR before it can be read aloud, and this app does not do OCR.");
     }
+    if (hebrewLooksMirrored(text)) text = text.split('\n').map(unmirrorLine).join('\n');
     text = text.replace(/(\p{Ll})[-\u00AD]\n(\p{Ll})/gu, '$1$2'); // re-join words hyphenated across a line break (any script)
     const title = metaTitle.replace(/^Microsoft Word - /, '').replace(/\.(docx?|odt|rtf|txt)$/i, '').trim();
     return { title: title || baseName(file.name), text, pages: pdf.numPages };

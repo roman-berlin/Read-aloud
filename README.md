@@ -84,6 +84,9 @@ files, bump `CACHE` in `sw.js`.
   page afterwards.
 - Scanned PDFs (pictures of pages, no text layer) are refused with a message: they
   need OCR first, and this app deliberately has none.
+- Some Hebrew PDFs (OCR layers, a few design tools) store their text so that it
+  extracts backwards. The app notices (final letters at the start of words) and
+  reverses it back, keeping Latin words and numbers as they are.
 - `.txt` files must be UTF-8 (UTF-16 with a byte-order mark, as Windows Notepad
   saves "Unicode", is accepted too). Any other encoding is refused with a message
   rather than read as gibberish.
@@ -115,7 +118,9 @@ end; what it cannot prove is how a real voice sounds. To hear it, open the app i
 a browser and tap the three sample books on the start screen.
 
 The PDF fixtures are generated from `tests/fixtures/src/*.html` by
-`tests/fixtures/src/make-pdfs.sh` (headless Chromium). All fixture texts are
+`tests/fixtures/src/make-pdfs.sh` (headless Chromium); `hebrew-mirrored.pdf`,
+whose text layer pdf.js reads backwards, is written by
+`tests/fixtures/src/make-mirrored-pdf.py` (needs `pip install fonttools`). All fixture texts are
 original and written for these tests.
 
 ## Deliberately not here

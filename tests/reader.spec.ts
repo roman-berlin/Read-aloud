@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { ALL_VOICES, installFakeSpeech, spoken, ttsLog, type CancelEntry, type FakeSpeechOptions } from './fake-speech';
 
@@ -66,8 +67,9 @@ test('English .txt: title, language, voices, and Play / Pause / Resume / Stop', 
   const interrupted = cancel.text as string;
   expect(resumed.text.length).toBeGreaterThan(0);
   expect(interrupted.endsWith(resumed.text)).toBe(true);
-  if (cancel.boundaries > 0) expect(resumed.text.length).toBeLessThan(interrupted.length); // words already heard are not repeated
-  else expect(resumed.text).toBe(interrupted); // cut off before its first word: the whole segment is due
+  // The first boundary event is at offset 0, so only from the second word on is there anything to skip.
+  if (cancel.boundaries > 1) expect(resumed.text.length).toBeLessThan(interrupted.length); // words already heard are not repeated
+  else expect(resumed.text).toBe(interrupted); // cut off within its first word: the whole segment is due
 
   // Stop: back to the beginning, engine cancelled and silent
   await stopBtn(page).click();
@@ -133,6 +135,25 @@ test('Hebrew PDF: title from PDF metadata, RTL layout, Hebrew voices (incl. the 
   await stopBtn(page).click();
   await expect(status(page)).toHaveText('Ready');
   await expect(position(page)).toHaveText(/^0%/);
+});
+
+test('a Hebrew PDF whose text layer comes out mirrored is repaired before reading', async ({ page }) => {
+  // tests/fixtures/hebrew-mirrored.pdf stores each line in logical order, which pdf.js mirrors
+  // (final letters at word starts, full stop first). The app must un-mirror it, keeping
+  // Latin words and numbers intact.
+  await open(page);
+  await upload(page, 'hebrew-mirrored.pdf');
+  await expect(page.locator('#title')).toHaveText('בית הרוח');
+  await expect(page.locator('#lang')).toHaveValue('he');
+  const expected = await readFile(fx('hebrew-mirrored.expected.txt'), 'utf8');
+  const norm = (s: string) => s.replace(/\s+/g, ' ').trim();
+  expect(norm(await page.locator('#text').innerText())).toBe(norm(expected));
+  await playBtn(page).click();
+  await expect.poll(() => spokenCount(page)).toBeGreaterThanOrEqual(2);
+  const s = await spoken(page);
+  expect(s[0].text).toBe('בית הרוח');
+  expect(s[1].text).toContain('HOUSE OF SPIRIT');
+  expect(s[1].text).toContain('משפחה יקרה');
 });
 
 test('without a Hebrew voice the app explains instead of reading in the wrong language', async ({ page }) => {
