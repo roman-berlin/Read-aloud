@@ -44,6 +44,12 @@ and reads with no internet connection.
 - Once installed, PDF and `.txt` files offer *Open with → Read Aloud* on Chrome
   desktop and Android.
 
+**Vercel:** import this repository in the Vercel dashboard (Add New → Project),
+set *Root Directory* to `audiobook-reader`, *Framework Preset* to *Other*, leave
+build and output empty, and pick the branch to deploy. `vercel.json` here only
+sets cache headers (the service worker is never cached, pdf.js is cached for a
+year). There is nothing to build.
+
 Browsers only install PWAs from `https://` or from `localhost`. `bun run start`
 on the same computer is enough for a desktop install. To put it on a phone, host
 this folder on any static host (Vercel, GitHub Pages, Netlify — there is nothing
