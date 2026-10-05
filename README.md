@@ -68,7 +68,8 @@ files, bump `CACHE` in `sw.js`.
 | `manifest.webmanifest`, `sw.js`, `icons/` | What makes it installable and offline-capable. `node icons/make-icons.mjs` renders the PNGs from `icons/icon.svg` with the test browser. |
 | `vendor/pdfjs/` | pdf.js (`pdfjs-dist` 6.4.299, legacy build, Apache-2.0) — the only dependency. See `vendor/pdfjs/VERSION`. |
 | `serve.ts` | A 20-line static file server for `bun run start`. Not part of the app. |
-| `tests/` | Playwright checks (see below) and the fixture books. |
+| `samples/` | Three short original books (Hebrew PDF, English and Russian `.txt`) offered on the start screen and used by the tests. |
+| `tests/` | Playwright checks (see below) and the error-case fixtures. |
 
 ## Browser notes
 
@@ -111,7 +112,7 @@ Headless browsers have no speech voices, so the tests install a small **fake
 speech engine** (`tests/fake-speech.ts`) that logs what the app asks it to say
 and fires the same events a real engine does. That proves the app's logic end to
 end; what it cannot prove is how a real voice sounds. To hear it, open the app in
-a browser and load `tests/fixtures/hebrew.pdf`, `english.txt` and `russian.txt`.
+a browser and tap the three sample books on the start screen.
 
 The PDF fixtures are generated from `tests/fixtures/src/*.html` by
 `tests/fixtures/src/make-pdfs.sh` (headless Chromium). All fixture texts are

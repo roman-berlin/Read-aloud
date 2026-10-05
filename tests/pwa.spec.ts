@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { fileURLToPath } from 'node:url';
 import { installFakeSpeech } from './fake-speech';
 
-const fx = (name: string) => fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url));
+const fx = (name: string) => fileURLToPath(new URL(`../samples/${name}`, import.meta.url));
 
 test('manifest is valid and its icons are served', async ({ page, request }) => {
   await page.goto('/');

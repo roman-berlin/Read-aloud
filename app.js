@@ -19,7 +19,7 @@ const SCANNED_MESSAGE =
 const $ = (id) => document.getElementById(id);
 const el = {
   file: $('file'), empty: $('empty'), book: $('book'), title: $('title'), stats: $('stats'),
-  lang: $('lang'), voice: $('voice'), rate: $('rate'), notice: $('notice'), persist: $('persist'),
+  samples: $('samples'), lang: $('lang'), voice: $('voice'), rate: $('rate'), notice: $('notice'), persist: $('persist'),
   text: $('text'), error: $('error'), chips: $('chips'), progress: $('progress'), fill: $('fill'),
   position: $('position'), play: $('play'), stop: $('stop'), status: $('status'),
 };
@@ -329,6 +329,21 @@ async function loadFile(file) {
   }
 }
 
+// The sample books ship with the app so a first run (or a phone with no files) has something to read.
+async function loadSample(name) {
+  hideError();
+  setStatus('Downloading sample…');
+  try {
+    const res = await fetch(`samples/${name}`);
+    if (!res.ok) throw new Error();
+    const blob = await res.blob();
+    await loadFile(new File([blob], name, { type: blob.type }));
+  } catch {
+    setStatus('');
+    showError('The sample book could not be downloaded. Check the connection and try again.');
+  }
+}
+
 // ---------- playback ----------
 
 const canPlay = () => !!book && !!synth && voicesFor(state.lang).length > 0;
@@ -583,6 +598,7 @@ function renderProgress() {
 function render() {
   const has = !!book;
   el.empty.hidden = has;
+  el.samples.hidden = has;
   el.book.hidden = !has;
   // Only the book text follows the language's direction; the controls stay LTR so
   // the English labels and numbers do not get bidi-scrambled in Hebrew.
@@ -606,6 +622,10 @@ function render() {
 // ---------- wiring ----------
 
 el.file.addEventListener('change', () => { loadFile(el.file.files && el.file.files[0]); el.file.value = ''; });
+el.samples.addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-sample]');
+  if (btn) loadSample(btn.dataset.sample);
+});
 el.play.addEventListener('click', togglePlay);
 el.stop.addEventListener('click', stop);
 

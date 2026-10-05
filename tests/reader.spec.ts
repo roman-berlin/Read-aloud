@@ -2,7 +2,8 @@ import { test, expect, type Page } from '@playwright/test';
 import { fileURLToPath } from 'node:url';
 import { ALL_VOICES, installFakeSpeech, spoken, ttsLog, type FakeSpeechOptions } from './fake-speech';
 
-const fx = (name: string) => fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url));
+const SAMPLES = new Set(['hebrew.pdf', 'english.txt', 'russian.txt']); // shipped with the app, also used as fixtures
+const fx = (name: string) => fileURLToPath(new URL(SAMPLES.has(name) ? `../samples/${name}` : `./fixtures/${name}`, import.meta.url));
 const FIRST_ENGLISH_LINE = "The Lighthouse Keeper's Ledger";
 
 async function open(page: Page, opts?: FakeSpeechOptions) {
@@ -298,6 +299,17 @@ test('tapping a sentence or the progress bar jumps there', async ({ page }) => {
   await playBtn(page).click();
   await expect.poll(() => spokenCount(page)).toBeGreaterThanOrEqual(1);
   expect((await spoken(page))[0].text).not.toBe(FIRST_ENGLISH_LINE);
+});
+
+test('the sample buttons load a book without a file', async ({ page }) => {
+  await open(page);
+  await page.getByRole('button', { name: 'Hebrew' }).click();
+  await expect(page.locator('#title')).toHaveText('מסע אל הנגב');
+  await expect(page.locator('#lang')).toHaveValue('he');
+  await expect(page.locator('#samples')).toBeHidden();
+  await playBtn(page).click();
+  await expect.poll(() => spokenCount(page)).toBeGreaterThanOrEqual(1);
+  expect((await spoken(page))[0].text).toBe('מסע אל הנגב');
 });
 
 test('voices that load late enable Play once they arrive', async ({ page }) => {

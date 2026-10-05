@@ -5,9 +5,11 @@ set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 CHROME="${CHROME:-$(command -v chromium || command -v google-chrome || echo /opt/pw-browsers/chromium-1194/chrome-linux/chrome)}"
 tmp="$(mktemp -d)"
-for name in hebrew scanned; do
+render() { # $1 = html name, $2 = output path
   "$CHROME" --headless=new --no-sandbox --disable-gpu --user-data-dir="$tmp" --no-pdf-header-footer \
-    --print-to-pdf="$here/../$name.pdf" "file://$here/$name.html" 2>/dev/null
-  echo "wrote tests/fixtures/$name.pdf"
-done
+    --print-to-pdf="$2" "file://$here/$1.html" 2>/dev/null
+  echo "wrote $2"
+}
+render hebrew "$here/../../../samples/hebrew.pdf"   # also a sample book offered in the app
+render scanned "$here/../scanned.pdf"
 rm -rf "$tmp"
