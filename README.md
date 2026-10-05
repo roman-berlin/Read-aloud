@@ -17,6 +17,8 @@ browser — the file never leaves the computer.
   the wrong language.
 - Only one book exists at a time. Uploading a new file deletes the old book and
   its progress. The current book and position are remembered across reloads.
+- It is a **PWA**: install it like an app (desktop, Android, iPhone) and it keeps
+  working with no internet, book included.
 
 ## Run it
 
@@ -30,11 +32,34 @@ Then open <http://localhost:8090>. That's it. Any static file server works too,
 for example `python3 -m http.server 8090` from this folder — the only requirement
 is `http://`, because browsers refuse to load pdf.js's worker from `file://`.
 
+## Install it as an app (PWA)
+
+After the first visit the service worker has everything cached, so the app opens
+and reads with no internet connection.
+
+- **Desktop Chrome / Edge:** click the install icon at the right end of the
+  address bar (or ⋮ → *Install Read Aloud*).
+- **Android (Chrome):** ⋮ → *Add to Home screen* / *Install app*.
+- **iPhone / iPad (Safari):** Share → *Add to Home Screen*.
+- Once installed, PDF and `.txt` files offer *Open with → Read Aloud* on Chrome
+  desktop and Android.
+
+Browsers only install PWAs from `https://` or from `localhost`. `bun run start`
+on the same computer is enough for a desktop install. To put it on a phone, host
+this folder on any static host (Vercel, GitHub Pages, Netlify — there is nothing
+to build) and open that address once on the phone.
+
+Updating: the service worker fetches the page files network-first, so an edit is
+live on the next reload; pdf.js under `vendor/` is served cache-first because it
+only changes together with its folder. To force every client to refetch all
+files, bump `CACHE` in `sw.js`.
+
 ## Files
 
 | File | What it is |
 |---|---|
 | `index.html`, `styles.css`, `app.js` | The whole app. No build step, no framework. |
+| `manifest.webmanifest`, `sw.js`, `icons/` | What makes it installable and offline-capable. `node icons/make-icons.mjs` renders the PNGs from `icons/icon.svg` with the test browser. |
 | `vendor/pdfjs/` | pdf.js (`pdfjs-dist` 6.4.299, legacy build, Apache-2.0) — the only dependency. See `vendor/pdfjs/VERSION`. |
 | `serve.ts` | A 20-line static file server for `bun run start`. Not part of the app. |
 | `tests/` | Playwright checks (see below) and the fixture books. |
@@ -52,13 +77,17 @@ is `http://`, because browsers refuse to load pdf.js's worker from `file://`.
   page afterwards.
 - Scanned PDFs (pictures of pages, no text layer) are refused with a message: they
   need OCR first, and this app deliberately has none.
-- `.txt` files must be UTF-8. A file in another encoding is refused with a message
+- `.txt` files must be UTF-8 (UTF-16 with a byte-order mark, as Windows Notepad
+  saves "Unicode", is accepted too). Any other encoding is refused with a message
   rather than read as gibberish.
 - The book is kept in the browser's local storage so it survives a reload. Very
   large books (over roughly 4–5 MB of text) stay loaded only until the page is
   closed; the app tells you when that is the case.
 
 ## Tests
+
+`tests/pwa.spec.ts` checks the manifest, the icons, the service-worker precache,
+and that the app still opens and reads a PDF with the network switched off.
 
 The checks in `tests/reader.spec.ts` cover the acceptance list: a Hebrew PDF, an
 English `.txt` and a Russian `.txt`; Play, Pause, Resume, Stop; replacing the
@@ -84,5 +113,6 @@ original and written for these tests.
 
 ## Deliberately not here
 
-No backend, no login, no OCR, no paid API, no framework, no build step. The app
-is a single folder you can copy anywhere and open from any static server.
+No backend, no login, no OCR, no paid API, no framework, no build step, no
+analytics. The app is a single folder you can copy anywhere and open from any
+static server.

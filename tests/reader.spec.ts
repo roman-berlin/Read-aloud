@@ -19,7 +19,7 @@ const voiceOptions = (page: Page) => page.locator('#voice option').allTextConten
 const spokenCount = (page: Page) => spoken(page).then((s) => s.length);
 
 test('English .txt: title, language, voices, and Play / Pause / Resume / Stop', async ({ page }) => {
-  await open(page);
+  await open(page, { msPerWord: 40 });
   await upload(page, 'english.txt');
 
   await expect(page.locator('#title')).toHaveText('english');
@@ -45,7 +45,8 @@ test('English .txt: title, language, voices, and Play / Pause / Resume / Stop', 
   await expect(position(page)).not.toHaveText(/^0%/);
   await expect(page.locator('.chunk.active')).toHaveCount(1);
 
-  // Pause: the engine is cancelled and stays silent
+  // Pause mid-segment (after at least two spoken words): the engine is cancelled and stays silent
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __tts: { live: () => { boundaries: number } | null } }).__tts.live()?.boundaries ?? 0)).toBeGreaterThanOrEqual(2);
   await pauseBtn(page).click();
   await expect(status(page)).toHaveText('Paused');
   const atPause = await ttsLog(page);
@@ -62,6 +63,7 @@ test('English .txt: title, language, voices, and Play / Pause / Resume / Stop', 
   const interrupted = all[spokenAtPause - 1];
   const resumed = all[spokenAtPause];
   expect(resumed.text.length).toBeGreaterThan(0);
+  expect(resumed.text.length).toBeLessThan(interrupted.text.length); // not from the top of the segment
   expect(interrupted.text.endsWith(resumed.text)).toBe(true);
 
   // Stop: back to the beginning, engine cancelled and silent
@@ -207,6 +209,7 @@ test.describe('errors are explained clearly', () => {
     ['empty.txt', 'is empty'],
     ['scanned.pdf', 'needs OCR'],
     ['cp1251.txt', 'not UTF-8'],
+    ['utf16-nobom.txt', 'not UTF-8'],
   ];
   for (const [file, fragment] of cases) {
     test(`${file} → "${fragment}"`, async ({ page }) => {
@@ -220,6 +223,14 @@ test.describe('errors are explained clearly', () => {
       await expect(status(page)).toHaveText('Ready');
     });
   }
+
+  test('UTF-16 with a byte-order mark (Windows Notepad "Unicode") is decoded, not refused', async ({ page }) => {
+    await open(page);
+    await upload(page, 'utf16.txt');
+    await expect(page.locator('#error')).toBeHidden();
+    await expect(page.locator('#title')).toHaveText('utf16');
+    await expect(page.locator('#text')).toContainText('Hello from Notepad');
+  });
 
   test('a failed upload keeps the current book', async ({ page }) => {
     await open(page);

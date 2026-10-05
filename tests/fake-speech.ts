@@ -91,13 +91,14 @@ function fakeSpeechInit(cfg: { voices: FakeVoice[]; msPerWord: number; voicesDel
     synth.pending = queue.length > 0;
     if (!live) return;
     const u = live;
+    u.boundaries = 0;
     const words: { index: number; length: number }[] = [];
     const re = /\S+/g;
     let m: RegExpExecArray | null;
     while ((m = re.exec(u.text))) words.push({ index: m.index, length: m[0].length });
     timers.push(setTimeout(() => fire(u, 'start'), 5));
     words.forEach((w, i) =>
-      timers.push(setTimeout(() => fire(u, 'boundary', { name: 'word', charIndex: w.index, charLength: w.length }), 5 + i * cfg.msPerWord)),
+      timers.push(setTimeout(() => { (u.boundaries as number)++; fire(u, 'boundary', { name: 'word', charIndex: w.index, charLength: w.length }); }, 5 + i * cfg.msPerWord)),
     );
     timers.push(setTimeout(() => {
       live = null;
@@ -117,5 +118,9 @@ function fakeSpeechInit(cfg: { voices: FakeVoice[]; msPerWord: number; voicesDel
 
   Object.defineProperty(window, 'speechSynthesis', { value: synth, configurable: true });
   (window as unknown as { SpeechSynthesisUtterance: unknown }).SpeechSynthesisUtterance = FakeUtterance;
-  (window as unknown as { __tts: unknown }).__tts = { log, isSpeaking: () => !!live };
+  (window as unknown as { __tts: unknown }).__tts = {
+    log,
+    isSpeaking: () => !!live,
+    live: () => (live ? { text: live.text, boundaries: live.boundaries as number } : null),
+  };
 }

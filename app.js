@@ -30,6 +30,7 @@ let book = null;                                   // { title, text, pages, chun
 let state = { lang: 'en', index: 0, offset: 0, status: 'idle' };
 let prefs = { rate: 1, voices: {} };               // voices: { [lang]: voiceURI }
 let gen = 0;                                       // bumped on every cancel; events from older utterances are ignored
+let loadSeq = 0;                                   // bumped per upload; a slower, older load must never land on top of a newer one
 let current = null;                                // keep the live utterance referenced — Chrome drops events of GC'd utterances
 let statusOverride = '';
 
@@ -39,19 +40,24 @@ function baseName(name) {
   return (name || 'Untitled').replace(/\.[^.]+$/, '').trim() || 'Untitled';
 }
 
+const NOT_UTF8 = 'This .txt file is not UTF-8 encoded. Save it as UTF-8 and upload it again.';
+
 async function readTxt(file) {
-  const text = new TextDecoder('utf-8').decode(await file.arrayBuffer());
-  const bad = (text.match(/�/g) || []).length;
-  if (bad > 2 && bad * 100 > text.length) {
-    throw new Error('This .txt file is not UTF-8 encoded. Save it as UTF-8 and upload it again.');
-  }
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const encoding = bytes[0] === 0xff && bytes[1] === 0xfe ? 'utf-16le' : bytes[0] === 0xfe && bytes[1] === 0xff ? 'utf-16be' : 'utf-8';
+  const text = new TextDecoder(encoding).decode(bytes);
+  if (text.includes('\0')) throw new Error(NOT_UTF8); // a NUL in a text file means UTF-16 without a BOM, not UTF-8
+  const bad = (text.match(/\uFFFD/g) || []).length;
+  if (bad > 2 && bad * 100 > text.length) throw new Error(NOT_UTF8);
   return { title: baseName(file.name), text, pages: null };
 }
 
-function looksScanned(text, numPages) {
-  const letters = text.replace(/\s+/g, '').length;
-  if (letters === 0) return true;
-  return numPages >= 3 && letters < numPages * 20; // a few page numbers on each page is not a text layer
+// A page of prose carries 1,000+ non-space characters; a scanner's watermark, a date stamp or a
+// page number carries a few dozen. Judge the typical (median) page so a stamp on every page of
+// a scanned book does not pass as a text layer.
+function looksScanned(pages) {
+  const counts = pages.map((p) => p.replace(/\s+/g, '').length).sort((a, b) => a - b);
+  return counts[Math.floor(counts.length / 2)] < 60;
 }
 
 // pdf.js only marks line ends. A paragraph break (or a heading) shows up as a vertical gap
@@ -112,10 +118,17 @@ async function readPdf(file, onProgress) {
       pages.push(pageText(content.items));
       page.cleanup();
     }
+    if (looksScanned(pages)) throw new Error(SCANNED_MESSAGE);
     let text = pages.join('\n\n');
-    if (looksScanned(text, pdf.numPages)) throw new Error(SCANNED_MESSAGE);
-    text = text.replace(/([a-z])-\n([a-z])/g, '$1$2'); // re-join words hyphenated across a line break
-    return { title: metaTitle || baseName(file.name), text, pages: pdf.numPages };
+    // Legacy non-Unicode Hebrew fonts leave a text layer of accented Latin gibberish (no ToUnicode map).
+    const ascii = (text.match(/[A-Za-z]/g) || []).length;
+    const latinExt = (text.match(/[\u00C0-\u024F]/g) || []).length;
+    if (latinExt > 50 && latinExt > ascii) {
+      throw new Error("This PDF's text layer is unreadable (it was made with a non-Unicode font). It needs OCR before it can be read aloud, and this app does not do OCR.");
+    }
+    text = text.replace(/(\p{Ll})[-\u00AD]\n(\p{Ll})/gu, '$1$2'); // re-join words hyphenated across a line break (any script)
+    const title = metaTitle.replace(/^Microsoft Word - /, '').replace(/\.(docx?|odt|rtf|txt)$/i, '').trim();
+    return { title: title || baseName(file.name), text, pages: pdf.numPages };
   } finally {
     loadingTask.destroy(); // releases the document and its worker
   }
@@ -138,8 +151,10 @@ function detectLang(text) {
 function sentenceSpans(str, lang) {
   if (typeof Intl !== 'undefined' && Intl.Segmenter) {
     try {
+      // Paragraph breaks were split off already, so a newline here is a line wrap, not a sentence
+      // end — but ICU treats every newline as one. Segment a same-length copy with wraps as spaces.
       const seg = new Intl.Segmenter(lang || undefined, { granularity: 'sentence' });
-      return Array.from(seg.segment(str), (s) => [s.index, s.index + s.segment.length]);
+      return Array.from(seg.segment(str.replace(/[\r\n]/g, ' ')), (s) => [s.index, s.index + s.segment.length]);
     } catch { /* fall through to the regex */ }
   }
   const spans = [];
@@ -220,9 +235,11 @@ function selectedVoice() {
   return list.find((v) => v.voiceURI === prefs.voices[state.lang]) || list.find((v) => v.default) || list[0] || null;
 }
 
+let voicesSettled = false; // true once voices arrived or we gave up waiting
 function refreshVoices() {
   if (!synth) return;
   voices = synth.getVoices().slice().sort((a, b) => a.name.localeCompare(b.name));
+  if (voices.length) voicesSettled = true;
   render();
 }
 
@@ -236,8 +253,9 @@ function saveText() {
     el.persist.hidden = false;
   }
 }
+const bookId = () => (book ? `${book.title}:${book.text.length}` : '');
 function saveState() {
-  try { localStorage.setItem(KEY_STATE, JSON.stringify({ lang: state.lang, index: state.index, offset: state.offset })); } catch { /* quota */ }
+  try { localStorage.setItem(KEY_STATE, JSON.stringify({ id: bookId(), lang: state.lang, index: state.index, offset: state.offset })); } catch { /* quota */ }
 }
 function savePrefs() {
   try { localStorage.setItem(KEY_PREFS, JSON.stringify(prefs)); } catch { /* quota */ }
@@ -245,20 +263,21 @@ function savePrefs() {
 function clearStored() {
   try { localStorage.removeItem(KEY_TEXT); localStorage.removeItem(KEY_STATE); } catch { /* ignore */ }
 }
+function readJson(key) {
+  try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch { return null; }
+}
 function restore() {
-  try {
-    const p = JSON.parse(localStorage.getItem(KEY_PREFS) || 'null');
-    if (p && typeof p === 'object') prefs = { rate: Number(p.rate) || 1, voices: p.voices || {} };
-    const t = JSON.parse(localStorage.getItem(KEY_TEXT) || 'null');
-    const s = JSON.parse(localStorage.getItem(KEY_STATE) || 'null');
-    if (t && typeof t.text === 'string' && t.text.trim()) {
-      setBook(t.title, t.text, t.pages, (s && s.lang) || detectLang(t.text) || 'en');
-      if (s) {
-        state.index = Math.min(Math.max(0, s.index | 0), book.chunks.length - 1);
-        state.offset = Math.max(0, s.offset | 0);
-      }
-    }
-  } catch { /* corrupt storage — start empty */ }
+  const p = readJson(KEY_PREFS);
+  if (p && typeof p === 'object') prefs = { rate: Number(p.rate) || 1, voices: p.voices || {} };
+  const t = readJson(KEY_TEXT);
+  if (!t || typeof t.text !== 'string' || !t.text.trim()) return;
+  setBook(t.title, t.text, t.pages, detectLang(t.text) || 'en');
+  const s = readJson(KEY_STATE);
+  if (s && s.id === bookId()) { // a position another tab saved for another book is ignored
+    if (s.lang) state.lang = s.lang;
+    state.index = Math.min(Math.max(0, s.index | 0), book.chunks.length - 1);
+    state.offset = Math.max(0, s.offset | 0);
+  }
 }
 
 // ---------- book lifecycle ----------
@@ -285,12 +304,14 @@ async function loadFile(file) {
     return;
   }
   if (state.status === 'playing') pause();
+  const my = ++loadSeq; // if a newer upload starts while this one is still extracting, this one is dropped
   el.play.disabled = true;
   setStatus('Reading file…');
   try {
     const result = isPdf
-      ? await readPdf(file, (p, n) => setStatus(`Extracting text… page ${p} of ${n}`))
+      ? await readPdf(file, (p, n) => { if (my === loadSeq) setStatus(`Extracting text… page ${p} of ${n}`); })
       : await readTxt(file);
+    if (my !== loadSeq) return;
     if (!result.text.trim()) throw new Error(`"${name}" is empty — there is no text to read.`);
     gen++;
     if (synth) synth.cancel();
@@ -302,10 +323,9 @@ async function loadFile(file) {
     if (!lang) showError('Could not tell which language this book is in. Pick one from the Language menu.');
     window.scrollTo({ top: 0 });
   } catch (err) {
-    showError((err && err.message ? err.message : String(err)) + kept);
+    if (my === loadSeq) showError((err && err.message ? err.message : String(err)) + kept);
   } finally {
-    setStatus('');
-    render();
+    if (my === loadSeq) { setStatus(''); render(); }
   }
 }
 
@@ -320,6 +340,8 @@ function togglePlay() {
 }
 
 function play() {
+  statusOverride = '';
+  hideError();
   if (!canPlay()) { render(); return; }
   if (state.index >= book.chunks.length) { state.index = 0; state.offset = 0; }
   state.status = 'playing';
@@ -378,6 +400,7 @@ function pause() {
 }
 
 function stop() {
+  statusOverride = '';
   gen++;
   if (synth) synth.cancel();
   state.status = 'idle';
@@ -399,6 +422,7 @@ function finish() {
 
 function seekTo(index) {
   if (!book) return;
+  statusOverride = '';
   state.index = Math.min(Math.max(0, index), book.chunks.length - 1);
   state.offset = 0;
   saveState();
@@ -408,7 +432,11 @@ function seekTo(index) {
 
 // ---------- rendering ----------
 
-function showError(msg) { el.error.textContent = msg; el.error.hidden = false; }
+function showError(msg) {
+  el.error.textContent = msg;
+  el.error.hidden = false;
+  el.error.scrollIntoView({ block: 'center' }); // the Upload button is sticky, so the user may be anywhere in the book
+}
 function hideError() { el.error.hidden = true; el.error.textContent = ''; }
 
 function setStatus(text) {
@@ -449,6 +477,7 @@ function renderBook() {
 
 function renderLangOptions() {
   const langs = new Set(CORE_LANGS);
+  if (state.lang) langs.add(state.lang);
   for (const v of voices) if (baseLang(v.lang)) langs.add(baseLang(v.lang));
   const extra = [...langs].filter((l) => !CORE_LANGS.includes(l)).sort((a, b) => langName(a).localeCompare(langName(b)));
   el.lang.replaceChildren(
@@ -511,8 +540,9 @@ function renderChips() {
     ...CORE_LANGS.map((code) => {
       const n = voicesFor(code).length;
       const chip = document.createElement('span');
-      chip.className = 'chip ' + (n ? 'ok' : 'missing');
-      chip.textContent = n ? `${langName(code)} ✓` : `${langName(code)} ✗ no voice`;
+      const loading = !n && !voicesSettled;
+      chip.className = 'chip ' + (n ? 'ok' : loading ? '' : 'missing');
+      chip.textContent = n ? `${langName(code)} ✓` : loading ? `${langName(code)} …` : `${langName(code)} ✗ no voice`;
       chip.title = n ? voicesFor(code).map((v) => v.name).join(', ') : `No ${langName(code)} voice installed on this device`;
       return chip;
     }),
@@ -536,11 +566,17 @@ function renderProgress() {
   el.position.textContent = `${pct}% · ${Math.min(i + 1, n)} / ${n}`;
   const prev = el.text.querySelector('.chunk.active');
   if (prev && Number(prev.dataset.i) === i) return;
+  // Follow the voice only while the reader is following it: if the previous sentence has been
+  // scrolled off screen, the reader went to look at something else — leave the page there.
+  const following = !prev || (({ top, bottom }) => bottom > 0 && top < window.innerHeight)(prev.getBoundingClientRect());
   if (prev) prev.classList.remove('active');
   const cur = el.text.querySelector(`.chunk[data-i="${i}"]`);
   if (cur) {
     cur.classList.add('active');
-    if (state.status === 'playing') cur.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    if (state.status === 'playing' && following) {
+      const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      cur.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
+    }
   }
 }
 
@@ -550,7 +586,10 @@ function render() {
   el.book.hidden = !has;
   // Only the book text follows the language's direction; the controls stay LTR so
   // the English labels and numbers do not get bidi-scrambled in Hebrew.
-  if (has) el.text.dir = RTL_LANGS.has(state.lang) ? 'rtl' : 'ltr';
+  if (has) {
+    el.text.dir = RTL_LANGS.has(state.lang) ? 'rtl' : 'ltr';
+    el.text.lang = state.lang;
+  }
   renderLangOptions();
   renderVoiceOptions();
   renderNotice();
@@ -572,6 +611,7 @@ el.stop.addEventListener('click', stop);
 
 el.lang.addEventListener('change', () => {
   state.lang = el.lang.value;
+  hideError();
   saveState();
   if (state.status === 'playing') { if (canPlay()) restart(); else pause(); }
   render();
@@ -619,16 +659,34 @@ document.addEventListener('drop', (e) => {
 });
 
 window.addEventListener('pagehide', () => {
-  if (state.status === 'playing') { state.status = 'paused'; saveState(); }
+  gen++;
   if (synth) synth.cancel();
+  if (state.status === 'playing') { state.status = 'paused'; saveState(); render(); }
 });
 
 if (!synth) {
   showError('This browser has no speech engine (Web Speech API). Open this page in Chrome, Edge, Safari or Firefox.');
 } else {
   synth.addEventListener('voiceschanged', refreshVoices);
-  for (const ms of [250, 1000, 3000]) setTimeout(refreshVoices, ms); // Safari may never fire voiceschanged
+  // Safari may never fire voiceschanged and some engines deliver voices seconds later: poll for a while.
+  let tries = 0;
+  const poll = setInterval(() => {
+    if (!voices.length) refreshVoices();
+    if (voices.length || ++tries >= 24) { clearInterval(poll); voicesSettled = true; render(); }
+  }, 500);
 }
 restore();
 refreshVoices();
 render();
+
+// PWA: installable and usable offline (sw.js precaches the app shell and pdf.js).
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').catch(() => { /* offline support is a bonus, never a blocker */ });
+}
+// When installed, the OS can hand a PDF/.txt straight to the app ("Open with…").
+if ('launchQueue' in window) {
+  window.launchQueue.setConsumer(async (launch) => {
+    const handle = launch.files && launch.files[0];
+    if (handle) loadFile(await handle.getFile());
+  });
+}
