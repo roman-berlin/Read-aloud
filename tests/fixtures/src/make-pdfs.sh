@@ -10,6 +10,6 @@ render() { # $1 = html name, $2 = output path
     --print-to-pdf="$2" "file://$here/$1.html" 2>/dev/null
   echo "wrote $2"
 }
-render hebrew "$here/../../../samples/hebrew.pdf"   # also a sample book offered in the app
+render hebrew "$here/../hebrew.pdf"
 render scanned "$here/../scanned.pdf"
 rm -rf "$tmp"

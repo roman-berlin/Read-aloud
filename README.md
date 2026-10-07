@@ -17,8 +17,14 @@ browser — the file never leaves the computer.
   the wrong language.
 - Only one book exists at a time. Uploading a new file deletes the old book and
   its progress. The current book and position are remembered across reloads.
+- The interface is in **English, Hebrew or Russian**: a switcher in the header,
+  separate from the reading language. It follows the book's language until you
+  pick one; the pick is remembered. Hebrew turns the whole page right-to-left;
+  the book text always keeps its own direction.
 - The start screen carries a quiet "Made by Automatixy" line with a WhatsApp
-  button (prefilled message). It disappears as soon as a book is open.
+  button (prefilled message in the interface language). Both disappear as soon
+  as a book is open. The business number is the `WHATSAPP_NUMBER` constant at
+  the top of `app.js`, the only place it lives.
 - It is a **PWA**: install it like an app (desktop, Android, iPhone) and it keeps
   working with no internet, book included.
 
@@ -66,11 +72,10 @@ files, bump `CACHE` in `sw.js`.
 
 | File | What it is |
 |---|---|
-| `index.html`, `styles.css`, `app.js` | The whole app. No build step, no framework. |
+| `index.html`, `styles.css`, `app.js` | The whole app. No build step, no framework. Every visible string is in the `I18N` table at the top of `app.js`; lines marked `REVIEW` want a native speaker's eye. |
 | `manifest.webmanifest`, `sw.js`, `icons/` | What makes it installable and offline-capable. `node icons/make-icons.mjs` renders the PNGs from `icons/icon.svg` with the test browser. |
 | `vendor/pdfjs/` | pdf.js (`pdfjs-dist` 6.4.299, legacy build, Apache-2.0) — the only dependency. See `vendor/pdfjs/VERSION`. |
 | `serve.ts` | A 20-line static file server for `bun run start`. Not part of the app. |
-| `samples/` | Three short original books (Hebrew PDF, English and Russian `.txt`) offered on the start screen and used by the tests. |
 | `tests/` | Playwright checks (see below) and the error-case fixtures. |
 
 ## Browser notes
@@ -117,7 +122,7 @@ Headless browsers have no speech voices, so the tests install a small **fake
 speech engine** (`tests/fake-speech.ts`) that logs what the app asks it to say
 and fires the same events a real engine does. That proves the app's logic end to
 end; what it cannot prove is how a real voice sounds. To hear it, open the app in
-a browser and tap the three sample books on the start screen.
+a browser and load `tests/fixtures/hebrew.pdf`, `english.txt` and `russian.txt`.
 
 The PDF fixtures are generated from `tests/fixtures/src/*.html` by
 `tests/fixtures/src/make-pdfs.sh` (headless Chromium); `hebrew-mirrored.pdf`,

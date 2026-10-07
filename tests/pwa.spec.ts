@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { fileURLToPath } from 'node:url';
 import { installFakeSpeech } from './fake-speech';
 
-const fx = (name: string) => fileURLToPath(new URL(`../samples/${name}`, import.meta.url));
+const fx = (name: string) => fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url));
 
 test('manifest is valid and its icons are served', async ({ page, request }) => {
   await page.goto('/');
@@ -28,6 +28,7 @@ test('manifest is valid and its icons are served', async ({ page, request }) => 
 });
 
 test('the service worker precaches the app shell and the app works offline', async ({ page, context }) => {
+  await page.addInitScript(() => localStorage.setItem('read-aloud.ui', 'en')); // keep the button names English
   await installFakeSpeech(page);
   await page.goto('/');
   await page.evaluate(() => navigator.serviceWorker.ready);

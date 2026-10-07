@@ -2,7 +2,7 @@
 :root {
   --bg: #121419;
   --bg-elev: #1a1d24;
-  --bg-bar: rgba(22, 25, 32, 0.88);
+  --bg-bar: rgba(22, 25, 32, 0.95); /* opaque enough that the book text no longer ghosts through the bars */
   --fg: #ebe7df;
   --fg-muted: #9aa0ab;
   --accent: #e0a94f;
@@ -21,10 +21,10 @@
   :root {
     --bg: #f7f4ed;
     --bg-elev: #fffdf8;
-    --bg-bar: rgba(255, 253, 248, 0.9);
+    --bg-bar: rgba(255, 253, 248, 0.96);
     --fg: #1f1d19;
     --fg-muted: #6d6961;
-    --accent: #9a6214;
+    --accent: #8a5712; /* 4.5:1+ even as bold text on the amber notice */
     --accent-fg: #fff;
     --active: rgba(184, 120, 30, 0.16);
     --border: #e3ddd0;
@@ -36,6 +36,9 @@
 }
 
 * { box-sizing: border-box; }
+/* The hidden attribute must win over any class that sets display (the start panel is a
+   display:block label, and silently stayed visible once a book was open). */
+[hidden] { display: none !important; }
 html { -webkit-text-size-adjust: 100%; }
 body {
   margin: 0;
@@ -46,7 +49,7 @@ body {
   min-height: 100vh;
 }
 body.drag::after {
-  content: "Drop to load";
+  content: attr(data-drop-label);
   position: fixed; inset: 0;
   display: grid; place-items: center;
   font-size: 1.5rem; font-weight: 600;
@@ -67,6 +70,11 @@ body.drag::after {
 }
 .brand { display: flex; align-items: center; gap: 10px; font-weight: 650; letter-spacing: 0.01em; }
 .brand svg { width: 24px; height: 24px; color: var(--accent); }
+.top-actions { display: flex; align-items: center; gap: 8px; }
+.ui-lang {
+  width: auto; min-height: 44px; padding: 6px 12px;
+  border-radius: 999px; font-weight: 600;
+}
 .upload {
   display: inline-flex; align-items: center; gap: 8px;
   padding: 10px 16px; min-height: 44px;
@@ -82,7 +90,8 @@ body.drag::after {
 .upload input { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
 
 /* Main */
-main { max-width: 760px; margin: 0 auto; padding: 20px 16px 150px; }
+/* 680px keeps the book text at a comfortable 65–80 characters per line; .row follows it. */
+main { max-width: 680px; margin: 0 auto; padding: 20px 16px 150px; }
 
 .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
 .chip {
@@ -110,7 +119,7 @@ main { max-width: 760px; margin: 0 auto; padding: 20px 16px 150px; }
   margin-top: 8vh;
   padding: 48px 24px;
   text-align: center;
-  border: 2px dashed var(--border);
+  border: 2px dashed color-mix(in srgb, var(--fg-muted) 30%, transparent);
   border-radius: var(--radius);
   color: var(--fg-muted);
   cursor: pointer;
@@ -118,14 +127,6 @@ main { max-width: 760px; margin: 0 auto; padding: 20px 16px 150px; }
 .empty:hover { border-color: var(--accent); }
 .empty:focus-within { outline: 3px solid var(--accent); outline-offset: 3px; }
 .empty svg { width: 56px; height: 56px; color: var(--accent); opacity: 0.9; }
-.samples { margin: 14px 0 0; text-align: center; color: var(--fg-muted); font-size: 0.95rem; }
-.samples button {
-  min-height: 40px; margin: 4px 2px; padding: 6px 14px;
-  border-radius: 999px; border: 1px solid var(--border);
-  background: var(--bg-elev); color: var(--fg); font: inherit; cursor: pointer;
-}
-.samples button:hover { border-color: var(--accent); }
-.samples button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* Credit: a quiet line on the start screen only; hidden while a book is open. */
 .credit { margin: 40px auto 0; text-align: center; color: var(--fg-muted); font-size: 0.85rem; }
@@ -159,24 +160,27 @@ main { max-width: 760px; margin: 0 auto; padding: 20px 16px 150px; }
 .settings label { display: flex; flex-direction: column; gap: 4px; font-size: 0.8rem; color: var(--fg-muted); }
 select {
   width: 100%; min-height: 44px;
-  padding: 8px 12px;
+  padding: 8px 10px;
   border-radius: 10px;
-  border: 1px solid var(--border);
+  border: 1px solid color-mix(in srgb, var(--fg-muted) 40%, transparent);
   background: var(--bg-elev); color: var(--fg);
   font: inherit; font-size: max(16px, 0.95rem); /* under 16px iOS Safari zooms the page on focus */
 }
 select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* Voice names and "1.25×" keep Latin glyph order (dir="ltr") under a Hebrew interface, but their
+   value should still sit under the right-aligned label rather than at the far left of the box. */
+:root[dir="rtl"] .settings select[dir="ltr"] { text-align: right; }
 
 .text {
   font-family: var(--font-book);
   font-size: 1.2rem;
   line-height: 1.75;
-  padding: 4px 0;
+  padding: 16px 0 4px; /* a visible breath between the controls and the book */
   overflow-wrap: anywhere;
 }
 .text p { margin: 0 0 1.1em; text-align: start; }
 .chunk { cursor: pointer; border-radius: 5px; padding: 1px 0; transition: background 0.15s ease; }
-@media (hover: hover) { .chunk:hover { background: var(--active); } }
+@media (hover: hover) { .chunk:hover:not(.active) { background: color-mix(in srgb, var(--active) 50%, transparent); } }
 .chunk.active { background: var(--active); box-shadow: 0 0 0 3px var(--active); }
 .text[dir="rtl"] { font-size: 1.25rem; }
 
@@ -191,13 +195,13 @@ select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 /* A 4px track inside a 24px hit area, so a fingertip can actually seek. */
 .progress {
   position: relative; height: 24px; padding: 10px 0; cursor: pointer;
-  background: var(--border); background-clip: content-box;
+  background: color-mix(in srgb, var(--accent) 28%, transparent); background-clip: content-box; /* a faint tint of the fill, so the track reads as seekable */
 }
 .progress:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .fill { height: 100%; width: 0; background: var(--accent); transition: width 0.2s ease; }
 .row {
   display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px;
-  max-width: 760px; margin: 0 auto; padding: 10px 16px 12px;
+  max-width: 680px; margin: 0 auto; padding: 10px 16px 12px;
 }
 .position { font-variant-numeric: tabular-nums; color: var(--fg-muted); font-size: 0.9rem; }
 .status { text-align: right; color: var(--fg-muted); font-size: 0.9rem; }
@@ -209,7 +213,7 @@ select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
   transition: transform 0.1s ease, filter 0.15s ease, opacity 0.15s ease;
 }
 .btn:active { transform: scale(0.95); }
-.btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+.btn:disabled { cursor: not-allowed; transform: none; background: var(--bg-elev); color: var(--fg-muted); border: 1px solid var(--border); }
 .btn:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
 .btn svg { fill: currentColor; }
 .play { width: 60px; height: 60px; background: var(--accent); color: var(--accent-fg); }
@@ -219,6 +223,7 @@ select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 .play.playing .icon-play { display: none; }
 .play.playing .icon-pause { display: block; }
 .stop { width: 46px; height: 46px; background: var(--bg-elev); color: var(--fg); border: 1px solid var(--border); }
+.stop:hover:not(:disabled) { border-color: var(--fg-muted); }
 .stop svg { width: 20px; height: 20px; }
 
 /* Tighter start screen on phones and short windows (e.g. a 720px-tall laptop), so the
@@ -227,10 +232,27 @@ select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
   .empty { margin-top: 12px; padding: 32px 20px; }
   .credit { margin-top: 24px; }
 }
+/* Under ~600px the auto-fit grid gives two 185px columns: values such as "Samantha (en-US)" get
+   clipped and Speed sits next to an empty cell. Give the language the room, keep Speed narrow
+   (its values are "1.25×"), and let Voice — the longest value — take the whole second row. */
+@media (max-width: 600px) {
+  .settings { grid-template-columns: 1fr 7rem; }
+  .settings label:nth-child(2) { order: 1; grid-column: 1 / -1; }
+}
 @media (max-width: 480px) {
-  .upload { padding: 10px 14px; font-size: 0.9rem; }
+  .brand-text { display: none; } /* icon only: room for the language switcher and the upload button */
+  .top { gap: 8px; }
+  .ui-lang { padding: 6px 8px; }
+  .upload { padding: 10px 12px; font-size: 0.85rem; }
   .row { grid-template-columns: 1fr auto 1fr; padding: 8px 12px 10px; }
   .text { font-size: 1.1rem; }
+  .text[dir="rtl"] { font-size: 1.15rem; } /* the RTL bump stays proportional; without this the desktop rule won on specificity */
+}
+/* Under 400px (iPhone mini/SE, small Androids) the header icon is the only thing left that can
+   give way; the start panel shows the same glyph large, and the Upload label must not wrap. */
+@media (max-width: 400px) {
+  .brand { display: none; }
+  .top-actions { margin-inline-start: auto; } /* space-between has one child now; keep the controls at the end edge in both directions */
 }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; scroll-behavior: auto !important; }
