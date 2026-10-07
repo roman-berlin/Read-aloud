@@ -2,7 +2,7 @@
 :root {
   --bg: #121419;
   --bg-elev: #1a1d24;
-  --bg-bar: rgba(22, 25, 32, 0.88);
+  --bg-bar: rgba(22, 25, 32, 0.95); /* opaque enough that the book text no longer ghosts through the bars */
   --fg: #ebe7df;
   --fg-muted: #9aa0ab;
   --accent: #e0a94f;
@@ -21,7 +21,7 @@
   :root {
     --bg: #f7f4ed;
     --bg-elev: #fffdf8;
-    --bg-bar: rgba(255, 253, 248, 0.9);
+    --bg-bar: rgba(255, 253, 248, 0.96);
     --fg: #1f1d19;
     --fg-muted: #6d6961;
     --accent: #9a6214;
@@ -90,7 +90,8 @@ body.drag::after {
 .upload input { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
 
 /* Main */
-main { max-width: 760px; margin: 0 auto; padding: 20px 16px 150px; }
+/* 680px keeps the book text at a comfortable 65–80 characters per line; .row follows it. */
+main { max-width: 680px; margin: 0 auto; padding: 20px 16px 150px; }
 
 .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
 .chip {
@@ -171,7 +172,7 @@ select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
   font-family: var(--font-book);
   font-size: 1.2rem;
   line-height: 1.75;
-  padding: 4px 0;
+  padding: 16px 0 4px; /* a visible breath between the controls and the book */
   overflow-wrap: anywhere;
 }
 .text p { margin: 0 0 1.1em; text-align: start; }
@@ -197,7 +198,7 @@ select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 .fill { height: 100%; width: 0; background: var(--accent); transition: width 0.2s ease; }
 .row {
   display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px;
-  max-width: 760px; margin: 0 auto; padding: 10px 16px 12px;
+  max-width: 680px; margin: 0 auto; padding: 10px 16px 12px;
 }
 .position { font-variant-numeric: tabular-nums; color: var(--fg-muted); font-size: 0.9rem; }
 .status { text-align: right; color: var(--fg-muted); font-size: 0.9rem; }
@@ -226,6 +227,13 @@ select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 @media (max-width: 480px), (max-height: 820px) {
   .empty { margin-top: 12px; padding: 32px 20px; }
   .credit { margin-top: 24px; }
+}
+/* Under ~600px the auto-fit grid gives two 185px columns: values such as "Samantha (en-US)" get
+   clipped and Speed sits next to an empty cell. Give the language the room, keep Speed narrow
+   (its values are "1.25×"), and let Voice — the longest value — take the whole second row. */
+@media (max-width: 600px) {
+  .settings { grid-template-columns: 1fr 7rem; }
+  .settings label:nth-child(2) { order: 1; grid-column: 1 / -1; }
 }
 @media (max-width: 480px) {
   .brand-text { display: none; } /* icon only: room for the language switcher and the upload button */
