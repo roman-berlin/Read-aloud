@@ -335,6 +335,26 @@ test('the sample buttons load a book without a file', async ({ page }) => {
   expect((await spoken(page))[0].text).toBe('מסע אל הנגב');
 });
 
+test('the Automatixy credit shows on the start screen only, above the player bar', async ({ page }) => {
+  await open(page);
+  const credit = page.locator('#credit');
+  await expect(credit).toBeVisible();
+  await expect(credit).toContainText('Made by Automatixy');
+  const wa = page.getByRole('link', { name: 'Message us on WhatsApp' });
+  await expect(wa).toHaveAttribute('href', /^https:\/\/wa\.me\/972545312632\?text=/);
+  await expect(wa).toHaveAttribute('target', '_blank');
+  await expect(wa).toHaveAttribute('rel', /noopener/);
+
+  // Visible without scrolling: the button ends above the fixed player bar.
+  const button = await wa.boundingBox();
+  const bar = await page.locator('#player').boundingBox();
+  expect(button!.y + button!.height).toBeLessThanOrEqual(bar!.y);
+
+  // Never shown while a book is open.
+  await upload(page, 'english.txt');
+  await expect(credit).toBeHidden();
+});
+
 test('voices that load late enable Play once they arrive', async ({ page }) => {
   await open(page, { voicesDelayMs: 600 });
   await upload(page, 'english.txt');

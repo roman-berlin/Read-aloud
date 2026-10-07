@@ -17,6 +17,8 @@ browser — the file never leaves the computer.
   the wrong language.
 - Only one book exists at a time. Uploading a new file deletes the old book and
   its progress. The current book and position are remembered across reloads.
+- The start screen carries a quiet "Made by Automatixy" line with a WhatsApp
+  button (prefilled message). It disappears as soon as a book is open.
 - It is a **PWA**: install it like an app (desktop, Android, iPhone) and it keeps
   working with no internet, book included.
 

@@ -19,7 +19,7 @@ const SCANNED_MESSAGE =
 const $ = (id) => document.getElementById(id);
 const el = {
   file: $('file'), empty: $('empty'), book: $('book'), title: $('title'), stats: $('stats'),
-  samples: $('samples'), lang: $('lang'), voice: $('voice'), rate: $('rate'), notice: $('notice'), persist: $('persist'),
+  samples: $('samples'), credit: $('credit'), lang: $('lang'), voice: $('voice'), rate: $('rate'), notice: $('notice'), persist: $('persist'),
   text: $('text'), error: $('error'), chips: $('chips'), progress: $('progress'), fill: $('fill'),
   position: $('position'), play: $('play'), stop: $('stop'), status: $('status'),
 };
@@ -622,6 +622,7 @@ function render() {
   const has = !!book;
   el.empty.hidden = has;
   el.samples.hidden = has;
+  el.credit.hidden = has;
   el.book.hidden = !has;
   // Only the book text follows the language's direction; the controls stay LTR so
   // the English labels and numbers do not get bidi-scrambled in Hebrew.
