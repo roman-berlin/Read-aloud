@@ -10,19 +10,223 @@ const RESTART_DELAY = 80;   // ms between cancel() and speak(); Chrome drops a s
 const KEY_TEXT = 'read-aloud.text';
 const KEY_STATE = 'read-aloud.state';
 const KEY_PREFS = 'read-aloud.prefs';
+const KEY_UI = 'read-aloud.ui';              // the interface language the user picked, if any
+
+// ---------- WhatsApp contact — the ONLY place the business number lives ----------
+const WHATSAPP_NUMBER = '972545312632';       // international format, digits only, no "+" 
 const CORE_LANGS = ['he', 'en', 'ru'];
 const RTL_LANGS = new Set(['he', 'ar', 'fa', 'ur', 'yi']);
 const DEFAULT_TAG = { he: 'he-IL', en: 'en-US', ru: 'ru-RU' };
-const SCANNED_MESSAGE =
-  'This PDF has no text layer — it looks like a scanned document. It needs OCR before it can be read aloud, and this app does not do OCR.';
-
 const $ = (id) => document.getElementById(id);
 const el = {
   file: $('file'), empty: $('empty'), book: $('book'), title: $('title'), stats: $('stats'),
   samples: $('samples'), credit: $('credit'), lang: $('lang'), voice: $('voice'), rate: $('rate'), notice: $('notice'), persist: $('persist'),
   text: $('text'), error: $('error'), chips: $('chips'), progress: $('progress'), fill: $('fill'),
   position: $('position'), play: $('play'), stop: $('stop'), status: $('status'),
+  uiLang: $('ui-lang'), uploadLabel: $('upload-label'), emptyTitle: $('empty-title'), emptyDesc: $('empty-desc'),
+  samplesLabel: $('samples-label'), creditMade: $('credit-made'), creditTag: $('credit-tag'), wa: $('wa'), waLabel: $('wa-label'),
+  labelLang: $('label-lang'), labelVoice: $('label-voice'), labelRate: $('label-rate'),
 };
+
+// ---------- interface language (i18n) ----------
+// Every visible string lives here. Plural forms are objects keyed by Intl.PluralRules categories
+// (one / two / few / many / other); a missing category falls back to "other".
+// Strings marked REVIEW are the ones a native speaker should check (mostly OS menu names).
+const I18N = {
+  en: {
+    upload: 'Upload PDF or .txt',
+    uiLanguage: 'Interface language',
+    voicesOnDevice: 'Voices installed on this device',
+    emptyTitle: 'Tap here to choose a book',
+    emptyDesc: 'One PDF or plain-text (.txt) file at a time — or drop it anywhere on this page. Everything happens in your browser; nothing is uploaded anywhere.',
+    samples: 'Or try a sample book:',
+    madeBy: 'Made by',
+    tagline: 'we build automations and useful apps',
+    whatsapp: 'Message us on WhatsApp',
+    waMessage: "Hi! I found you through the Read Aloud app and I'd like to hear about an app or automation.",
+    readingLanguage: 'Reading language',
+    voice: 'Voice',
+    speed: 'Speed',
+    persist: 'This book is too large to remember after a reload — it stays loaded until you leave the page.',
+    play: 'Play', pause: 'Pause', stop: 'Stop', position: 'Position in book',
+    ready: 'Ready', playing: 'Playing', paused: 'Paused', finished: 'Finished',
+    readingFile: 'Reading file…',
+    extracting: 'Extracting text… page {page} of {pages}',
+    downloadingSample: 'Downloading sample…',
+    dropToLoad: 'Drop to load',
+    untitled: 'Untitled',
+    pages: { one: '{n} page', other: '{n} pages' },
+    segments: { one: '{n} segment', other: '{n} segments' },
+    characters: { one: '{n} character', other: '{n} characters' },
+    aboutMinutes: 'about {n} min at 1×',
+    positionText: '{pct}%, segment {i} of {n}',
+    voicesCount: { one: '{n} voice', other: '{n} voices' },
+    noVoiceInstalled: '— no voice installed',
+    noVoiceForLanguage: 'No voice for this language',
+    chipMissing: '✗ no voice',
+    chipTitleMissing: 'No {lang} voice installed on this device',
+    noEngineTitle: 'This viewer has no speech engine.',
+    noEngineBody: 'Open this page in Chrome or Safari (share icon → open in browser).',
+    noEngineError: 'This viewer has no speech engine, so nothing can be read aloud here. If you opened this page inside another app, open it in Chrome or Safari instead (share icon → open in browser) — file upload also works only there.',
+    noVoiceTitle: 'No {lang} voice is installed on this device',
+    noVoiceBody: ", so this book will not be read in {lang} — reading it with another language's voice would sound wrong. Install one and reload this page:",
+    voiceInstallSteps: 'macOS → System Settings → Accessibility → Spoken Content → System Voice → Manage Voices… · Windows → Settings → Time & Language → Speech → Add voices · iPhone/iPad → Settings → Accessibility → Spoken Content → Voices · Android → Settings → Google Text-to-speech → Install voice data.',
+    orPickLanguage: 'Or pick another language from the menu above if the book is really in that language.',
+    loadingVoicesTitle: 'Loading voices…',
+    loadingVoicesBody: 'If this message stays, your browser reports no speech voices at all.',
+    errUnsupported: '"{name}" is not supported. Upload a PDF or a plain-text (.txt) file.',
+    errEmpty: '"{name}" is empty — there is no text to read.',
+    errKept: ' Your current book was kept.',
+    errNotUtf8: 'This .txt file is not UTF-8 encoded. Save it as UTF-8 and upload it again.',
+    errScanned: 'This PDF has no text layer — it looks like a scanned document. It needs OCR before it can be read aloud, and this app does not do OCR.',
+    errPassword: 'This PDF is password-protected. Remove the password and upload it again.',
+    errNotPdf: 'This file could not be opened as a PDF. It may be damaged or not really a PDF.',
+    errUnreadableLayer: "This PDF's text layer is unreadable (it was made with a non-Unicode font). It needs OCR before it can be read aloud, and this app does not do OCR.",
+    errLangUnknown: 'Could not tell which language this book is in. Pick one from the Reading language menu.',
+    errEngine: 'The speech engine stopped: {error}. Press Play to continue.',
+    errSample: 'The sample book could not be downloaded. Check the connection and try again.',
+  },
+  he: {
+    upload: 'העלאת PDF או TXT',
+    uiLanguage: 'שפת הממשק',
+    voicesOnDevice: 'קולות שמותקנים במכשיר הזה',
+    emptyTitle: 'הקישו כאן לבחירת ספר',
+    emptyDesc: 'קובץ PDF או טקסט (TXT) אחד בכל פעם — או גררו אותו לכל מקום בדף. הכול קורה בדפדפן שלכם; שום דבר לא נשלח לשום מקום.',
+    samples: 'או נסו ספר לדוגמה:',
+    madeBy: 'נבנה על ידי',
+    tagline: 'אנחנו בונים אוטומציות ואפליקציות שימושיות',
+    whatsapp: 'כתבו לנו בוואטסאפ',
+    waMessage: 'היי! הגעתי אליכם דרך האפליקציה Read Aloud ואשמח לשמוע על אפליקציה או אוטומציה.',
+    readingLanguage: 'שפת הקריאה',
+    voice: 'קול',
+    speed: 'מהירות',
+    persist: 'הספר הזה גדול מכדי להישמר אחרי רענון — הוא נשאר טעון עד שתעזבו את הדף.',
+    play: 'ניגון', // REVIEW: "הפעלה" is the other common choice
+    pause: 'השהיה', stop: 'עצירה', position: 'מיקום בספר',
+    ready: 'מוכן',
+    playing: 'מקריא', // REVIEW
+    paused: 'מושהה', finished: 'הסתיים',
+    readingFile: 'קורא את הקובץ…',
+    extracting: 'מחלץ טקסט… עמוד {page} מתוך {pages}',
+    downloadingSample: 'מוריד ספר לדוגמה…',
+    dropToLoad: 'שחררו כדי לטעון',
+    untitled: 'ללא שם',
+    pages: { one: 'עמוד אחד', other: '{n} עמודים' },
+    segments: { one: 'קטע אחד', other: '{n} קטעים' }, // REVIEW: "קטע" for a spoken segment
+    characters: { one: 'תו אחד', other: '{n} תווים' },
+    aboutMinutes: 'בערך {n} דק׳ במהירות רגילה',
+    positionText: '{pct}%, קטע {i} מתוך {n}',
+    voicesCount: { one: 'קול אחד', other: '{n} קולות' },
+    noVoiceInstalled: '— אין קול מותקן',
+    noVoiceForLanguage: 'אין קול לשפה הזו',
+    chipMissing: '✗ אין קול',
+    chipTitleMissing: 'במכשיר הזה לא מותקן קול ב{lang}',
+    noEngineTitle: 'לתצוגה הזו אין מנוע דיבור.',
+    noEngineBody: 'פתחו את הדף ב-Chrome או ב-Safari (סמל השיתוף ← פתיחה בדפדפן).',
+    noEngineError: 'לתצוגה הזו אין מנוע דיבור, ולכן אי אפשר להקריא כאן. אם פתחתם את הדף בתוך אפליקציה אחרת, פתחו אותו ב-Chrome או ב-Safari (סמל השיתוף ← פתיחה בדפדפן) — גם העלאת קבצים עובדת רק שם.',
+    noVoiceTitle: 'במכשיר הזה לא מותקן קול ב{lang}',
+    noVoiceBody: ', ולכן הספר לא יוקרא ב{lang} — הקראה בקול של שפה אחרת תישמע לא נכון. התקינו קול וטענו את הדף מחדש:',
+    // REVIEW: OS menu names depend on the device language; arrows point in reading direction.
+    voiceInstallSteps: 'macOS ← הגדרות המערכת ← נגישות ← תוכן מדובר ← קול המערכת ← ניהול קולות… · Windows ← הגדרות ← שעה ושפה ← דיבור ← הוספת קולות · iPhone/iPad ← הגדרות ← נגישות ← תוכן מדובר ← קולות · Android ← הגדרות ← Google Text-to-speech ← התקנת נתוני קול.',
+    orPickLanguage: 'או בחרו שפה אחרת בתפריט למעלה אם הספר באמת כתוב בשפה הזו.',
+    loadingVoicesTitle: 'טוען קולות…',
+    loadingVoicesBody: 'אם ההודעה הזו נשארת, הדפדפן לא מדווח על קולות דיבור בכלל.',
+    errUnsupported: 'הקובץ "{name}" אינו נתמך. העלו קובץ PDF או קובץ טקסט (TXT).',
+    errEmpty: 'הקובץ "{name}" ריק — אין טקסט להקראה.',
+    errKept: ' הספר הנוכחי נשמר.',
+    errNotUtf8: 'קובץ ה-TXT הזה אינו בקידוד UTF-8. שמרו אותו כ-UTF-8 והעלו שוב.',
+    errScanned: 'ל-PDF הזה אין שכבת טקסט — נראה שזה מסמך סרוק. הוא זקוק ל-OCR לפני שאפשר להקריא אותו, והאפליקציה הזו לא מבצעת OCR.',
+    errPassword: 'ה-PDF הזה מוגן בסיסמה. הסירו את הסיסמה והעלו שוב.',
+    errNotPdf: 'לא ניתן לפתוח את הקובץ כ-PDF. ייתכן שהוא פגום או שאינו באמת PDF.',
+    errUnreadableLayer: 'שכבת הטקסט של ה-PDF הזה אינה קריאה (הוא נוצר עם גופן שאינו Unicode). הוא זקוק ל-OCR לפני שאפשר להקריא אותו, והאפליקציה הזו לא מבצעת OCR.',
+    errLangUnknown: 'לא הצלחנו לזהות באיזו שפה הספר כתוב. בחרו שפה בתפריט "שפת הקריאה".',
+    errEngine: 'מנוע הדיבור נעצר: {error}. לחצו על ניגון כדי להמשיך.',
+    errSample: 'לא ניתן להוריד את הספר לדוגמה. בדקו את החיבור ונסו שוב.',
+  },
+  ru: {
+    upload: 'Загрузить PDF/TXT',
+    uiLanguage: 'Язык интерфейса',
+    voicesOnDevice: 'Голоса, установленные на этом устройстве',
+    emptyTitle: 'Нажмите здесь, чтобы выбрать книгу',
+    emptyDesc: 'Один файл PDF или текстовый (TXT) за раз — или перетащите его в любое место страницы. Всё происходит в вашем браузере; ничего никуда не отправляется.',
+    samples: 'Или попробуйте книгу для примера:',
+    madeBy: 'Сделано',
+    tagline: 'мы создаём автоматизации и полезные приложения',
+    whatsapp: 'Напишите нам в WhatsApp',
+    waMessage: 'Здравствуйте! Пишу из приложения Read Aloud — хочу узнать о приложении или автоматизации.',
+    readingLanguage: 'Язык чтения',
+    voice: 'Голос',
+    speed: 'Скорость',
+    persist: 'Эта книга слишком большая, чтобы сохраниться после перезагрузки — она остаётся открытой, пока вы не покинете страницу.',
+    play: 'Воспроизвести', pause: 'Пауза', stop: 'Стоп', position: 'Место в книге',
+    ready: 'Готово',
+    playing: 'Читает', // REVIEW
+    paused: 'Пауза', finished: 'Завершено',
+    readingFile: 'Читаю файл…',
+    extracting: 'Извлекаю текст… страница {page} из {pages}',
+    downloadingSample: 'Загружаю книгу для примера…',
+    dropToLoad: 'Отпустите, чтобы загрузить',
+    untitled: 'Без названия',
+    pages: { one: '{n} страница', few: '{n} страницы', many: '{n} страниц', other: '{n} страницы' },
+    segments: { one: '{n} сегмент', few: '{n} сегмента', many: '{n} сегментов', other: '{n} сегмента' },
+    characters: { one: '{n} знак', few: '{n} знака', many: '{n} знаков', other: '{n} знака' },
+    aboutMinutes: 'около {n} мин на обычной скорости',
+    positionText: '{pct}%, сегмент {i} из {n}',
+    voicesCount: { one: '{n} голос', few: '{n} голоса', many: '{n} голосов', other: '{n} голоса' },
+    noVoiceInstalled: '— голос не установлен',
+    noVoiceForLanguage: 'Нет голоса для этого языка',
+    chipMissing: '✗ нет голоса',
+    chipTitleMissing: 'На этом устройстве не установлен голос для языка «{lang}»',
+    noEngineTitle: 'В этом окне нет речевого движка.',
+    noEngineBody: 'Откройте страницу в Chrome или Safari (значок «Поделиться» → открыть в браузере).',
+    noEngineError: 'В этом окне нет речевого движка, поэтому читать вслух здесь нельзя. Если вы открыли страницу внутри другого приложения, откройте её в Chrome или Safari (значок «Поделиться» → открыть в браузере) — загрузка файлов тоже работает только там.',
+    noVoiceTitle: 'На этом устройстве не установлен голос для языка «{lang}»',
+    noVoiceBody: ', поэтому книга не будет прочитана на этом языке — чтение голосом другого языка звучало бы неправильно. Установите голос и перезагрузите страницу:',
+    // REVIEW: OS menu names depend on the device language.
+    voiceInstallSteps: 'macOS → Системные настройки → Универсальный доступ → Устный контент → Системный голос → Управление голосами… · Windows → Параметры → Время и язык → Речь → Добавить голоса · iPhone/iPad → Настройки → Универсальный доступ → Устный контент → Голоса · Android → Настройки → Синтез речи Google → Установить голосовые данные.',
+    orPickLanguage: 'Или выберите другой язык в меню выше, если книга действительно на нём написана.',
+    loadingVoicesTitle: 'Загружаю голоса…',
+    loadingVoicesBody: 'Если это сообщение не исчезает, браузер вообще не сообщает о голосах.',
+    errUnsupported: 'Файл «{name}» не поддерживается. Загрузите PDF или текстовый файл (TXT).',
+    errEmpty: 'Файл «{name}» пуст — читать нечего.',
+    errKept: ' Текущая книга сохранена.',
+    errNotUtf8: 'Этот TXT-файл не в кодировке UTF-8. Сохраните его в UTF-8 и загрузите снова.',
+    errScanned: 'У этого PDF нет текстового слоя — похоже, это скан. Ему нужно распознавание (OCR), а это приложение OCR не делает.',
+    errPassword: 'Этот PDF защищён паролем. Снимите пароль и загрузите снова.',
+    errNotPdf: 'Не удалось открыть файл как PDF. Возможно, он повреждён или это не PDF.',
+    errUnreadableLayer: 'Текстовый слой этого PDF нечитаем (он сделан шрифтом без Unicode). Ему нужно распознавание (OCR), а это приложение OCR не делает.',
+    errLangUnknown: 'Не удалось определить язык книги. Выберите его в меню «Язык чтения».',
+    errEngine: 'Речевой движок остановился: {error}. Нажмите «Воспроизвести», чтобы продолжить.',
+    errSample: 'Не удалось загрузить книгу для примера. Проверьте соединение и попробуйте снова.',
+  },
+};
+
+let uiLangSaved = null; // explicit choice from the header switcher, persisted
+try { uiLangSaved = localStorage.getItem(KEY_UI); } catch { /* storage blocked */ }
+
+function browserUiLang() {
+  const tags = navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language];
+  for (const tag of tags) { const b = baseLang(tag); if (I18N[b]) return b; }
+  return 'en';
+}
+// The saved choice wins; otherwise the interface follows the book's reading language, then the browser.
+function uiLang() {
+  if (uiLangSaved && I18N[uiLangSaved]) return uiLangSaved;
+  if (book && I18N[state.lang]) return state.lang;
+  return browserUiLang();
+}
+function t(key, params) {
+  const lang = uiLang();
+  const s = (I18N[lang] && I18N[lang][key]) || I18N.en[key] || key;
+  return params ? s.replace(/\{(\w+)\}/g, (_, k) => (params[k] === undefined ? '' : String(params[k]))) : s;
+}
+function tn(key, n) {
+  const lang = uiLang();
+  const forms = (I18N[lang] && I18N[lang][key]) || I18N.en[key];
+  let category = 'other';
+  try { category = new Intl.PluralRules(lang).select(n); } catch { /* old browser */ }
+  return (forms[category] || forms.other).replace('{n}', n.toLocaleString(lang));
+}
 
 const synth = window.speechSynthesis;
 let voices = [];
@@ -32,23 +236,21 @@ let prefs = { rate: 1, voices: {} };               // voices: { [lang]: voiceURI
 let gen = 0;                                       // bumped on every cancel; events from older utterances are ignored
 let loadSeq = 0;                                   // bumped per upload; a slower, older load must never land on top of a newer one
 let current = null;                                // keep the live utterance referenced — Chrome drops events of GC'd utterances
-let statusOverride = '';
+let statusOverride = null;                         // { key, params } shown instead of the playback state, e.g. while loading
 
 // ---------- text extraction ----------
 
 function baseName(name) {
-  return (name || 'Untitled').replace(/\.[^.]+$/, '').trim() || 'Untitled';
+  return (name || '').replace(/\.[^.]+$/, '').trim() || t('untitled');
 }
-
-const NOT_UTF8 = 'This .txt file is not UTF-8 encoded. Save it as UTF-8 and upload it again.';
 
 async function readTxt(file) {
   const bytes = new Uint8Array(await file.arrayBuffer());
   const encoding = bytes[0] === 0xff && bytes[1] === 0xfe ? 'utf-16le' : bytes[0] === 0xfe && bytes[1] === 0xff ? 'utf-16be' : 'utf-8';
   const text = new TextDecoder(encoding).decode(bytes);
-  if (text.includes('\0')) throw new Error(NOT_UTF8); // a NUL in a text file means UTF-16 without a BOM, not UTF-8
+  if (text.includes('\0')) throw new Error(t('errNotUtf8')); // a NUL in a text file means UTF-16 without a BOM, not UTF-8
   const bad = (text.match(/\uFFFD/g) || []).length;
-  if (bad > 2 && bad * 100 > text.length) throw new Error(NOT_UTF8);
+  if (bad > 2 && bad * 100 > text.length) throw new Error(t('errNotUtf8'));
   return { title: baseName(file.name), text, pages: null };
 }
 
@@ -125,9 +327,9 @@ async function readPdf(file, onProgress) {
   } catch (err) {
     loadingTask.destroy();
     if (err && err.name === 'PasswordException') {
-      throw new Error('This PDF is password-protected. Remove the password and upload it again.');
+      throw new Error(t('errPassword'));
     }
-    throw new Error('This file could not be opened as a PDF. It may be damaged or not really a PDF.');
+    throw new Error(t('errNotPdf'));
   }
   try {
     const meta = await pdf.getMetadata().catch(() => null);
@@ -140,13 +342,13 @@ async function readPdf(file, onProgress) {
       pages.push(pageText(content.items));
       page.cleanup();
     }
-    if (looksScanned(pages)) throw new Error(SCANNED_MESSAGE);
+    if (looksScanned(pages)) throw new Error(t('errScanned'));
     let text = pages.join('\n\n');
     // Legacy non-Unicode Hebrew fonts leave a text layer of accented Latin gibberish (no ToUnicode map).
     const ascii = (text.match(/[A-Za-z]/g) || []).length;
     const latinExt = (text.match(/[\u00C0-\u024F]/g) || []).length;
     if (latinExt > 50 && latinExt > ascii) {
-      throw new Error("This PDF's text layer is unreadable (it was made with a non-Unicode font). It needs OCR before it can be read aloud, and this app does not do OCR.");
+      throw new Error(t('errUnreadableLayer'));
     }
     if (hebrewLooksMirrored(text)) text = text.split('\n').map(unmirrorLine).join('\n');
     text = text.replace(/(\p{Ll})[-\u00AD]\n(\p{Ll})/gu, '$1$2'); // re-join words hyphenated across a line break (any script)
@@ -247,10 +449,13 @@ function baseLang(tag) {
 }
 const voicesFor = (lang) => voices.filter((v) => baseLang(v.lang) === lang);
 
-let displayNames = null;
-try { displayNames = new Intl.DisplayNames(['en'], { type: 'language' }); } catch { /* old browser */ }
+const displayNames = {}; // per interface language
 function langName(code) {
-  try { return (displayNames && displayNames.of(code)) || code; } catch { return code; }
+  const lang = uiLang();
+  try {
+    displayNames[lang] = displayNames[lang] || new Intl.DisplayNames([lang], { type: 'language' });
+    return displayNames[lang].of(code) || code;
+  } catch { return code; }
 }
 
 function selectedVoice() {
@@ -321,21 +526,21 @@ async function loadFile(file) {
   const ext = name.toLowerCase().split('.').pop();
   const isPdf = ext === 'pdf' || file.type === 'application/pdf';
   const isTxt = ext === 'txt' || file.type === 'text/plain';
-  const kept = book ? ' Your current book was kept.' : '';
+  const kept = book ? t('errKept') : '';
   if (!isPdf && !isTxt) {
-    showError(`"${name}" is not supported. Upload a PDF or a plain-text (.txt) file.${kept}`);
+    showError(t('errUnsupported', { name }) + kept);
     return;
   }
   if (state.status === 'playing') pause();
   const my = ++loadSeq; // if a newer upload starts while this one is still extracting, this one is dropped
   el.play.disabled = true;
-  setStatus('Reading file…');
+  setStatus('readingFile');
   try {
     const result = isPdf
-      ? await readPdf(file, (p, n) => { if (my === loadSeq) setStatus(`Extracting text… page ${p} of ${n}`); })
+      ? await readPdf(file, (p, n) => { if (my === loadSeq) setStatus('extracting', { page: p, pages: n }); })
       : await readTxt(file);
     if (my !== loadSeq) return;
-    if (!result.text.trim()) throw new Error(`"${name}" is empty — there is no text to read.`);
+    if (!result.text.trim()) throw new Error(t('errEmpty', { name }));
     gen++;
     if (synth) synth.cancel();
     clearStored(); // the previous book and its progress are gone for good
@@ -343,27 +548,27 @@ async function loadFile(file) {
     setBook(result.title, result.text, result.pages, lang || 'en');
     saveText();
     saveState();
-    if (!lang) showError('Could not tell which language this book is in. Pick one from the Language menu.');
+    if (!lang) showError(t('errLangUnknown'));
     window.scrollTo({ top: 0 });
   } catch (err) {
     if (my === loadSeq) showError((err && err.message ? err.message : String(err)) + kept);
   } finally {
-    if (my === loadSeq) { setStatus(''); render(); }
+    if (my === loadSeq) { setStatus(null); render(); }
   }
 }
 
 // The sample books ship with the app so a first run (or a phone with no files) has something to read.
 async function loadSample(name) {
   hideError();
-  setStatus('Downloading sample…');
+  setStatus('downloadingSample');
   try {
     const res = await fetch(`samples/${name}`);
     if (!res.ok) throw new Error();
     const blob = await res.blob();
     await loadFile(new File([blob], name, { type: blob.type }));
   } catch {
-    setStatus('');
-    showError('The sample book could not be downloaded. Check the connection and try again.');
+    setStatus(null);
+    showError(t('errSample'));
   }
 }
 
@@ -378,7 +583,7 @@ function togglePlay() {
 }
 
 function play() {
-  statusOverride = '';
+  statusOverride = null;
   hideError();
   if (!canPlay()) { render(); return; }
   if (state.index >= book.chunks.length) { state.index = 0; state.offset = 0; }
@@ -421,7 +626,7 @@ function speakChunk() {
   u.onerror = (e) => {
     if (my !== gen) return;
     if (e.error === 'interrupted' || e.error === 'canceled') return;
-    showError(`The speech engine stopped: ${e.error || 'unknown error'}. Press Play to continue.`);
+    showError(t('errEngine', { error: e.error || 'unknown' }));
     pause();
   };
   current = u;
@@ -438,7 +643,7 @@ function pause() {
 }
 
 function stop() {
-  statusOverride = '';
+  statusOverride = null;
   gen++;
   if (synth) synth.cancel();
   state.status = 'idle';
@@ -455,12 +660,12 @@ function finish() {
   state.offset = 0;
   saveState();
   render();
-  setStatus('Finished');
+  setStatus('finished');
 }
 
 function seekTo(index) {
   if (!book) return;
-  statusOverride = '';
+  statusOverride = null;
   state.index = Math.min(Math.max(0, index), book.chunks.length - 1);
   state.offset = 0;
   saveState();
@@ -477,22 +682,28 @@ function showError(msg) {
 }
 function hideError() { el.error.hidden = true; el.error.textContent = ''; }
 
-function setStatus(text) {
-  statusOverride = text;
+function setStatus(key, params) {
+  statusOverride = key ? { key, params } : null;
   renderStatus();
 }
 
 function renderStatus() {
-  if (statusOverride) { el.status.textContent = statusOverride; return; }
-  el.status.textContent = state.status === 'playing' ? 'Playing' : state.status === 'paused' ? 'Paused' : 'Ready';
+  if (statusOverride) { el.status.textContent = t(statusOverride.key, statusOverride.params); return; }
+  el.status.textContent = t(state.status === 'playing' ? 'playing' : state.status === 'paused' ? 'paused' : 'ready');
+}
+
+function renderStats() {
+  const minutes = Math.max(1, Math.round(book.total / 850));
+  el.stats.textContent = [
+    book.pages ? tn('pages', book.pages) : null,
+    tn('segments', book.chunks.length),
+    tn('characters', book.text.length),
+    t('aboutMinutes', { n: minutes }),
+  ].filter(Boolean).join(' · ');
 }
 
 function renderBook() {
   el.title.textContent = book.title;
-  const minutes = Math.max(1, Math.round(book.total / 850));
-  el.stats.textContent =
-    (book.pages ? `${book.pages} page${book.pages === 1 ? '' : 's'} · ` : '') +
-    `${book.chunks.length.toLocaleString()} segments · ${book.text.length.toLocaleString()} characters · about ${minutes} min at 1×`;
   const frag = document.createDocumentFragment();
   let p = null, lastPara = -1;
   book.chunks.forEach((c, i) => {
@@ -523,7 +734,7 @@ function renderLangOptions() {
       const n = voicesFor(code).length;
       const o = document.createElement('option');
       o.value = code;
-      o.textContent = n ? `${langName(code)} (${n} voice${n === 1 ? '' : 's'})` : `${langName(code)} — no voice installed`;
+      o.textContent = n ? `${langName(code)} (${tn('voicesCount', n)})` : `${langName(code)} ${t('noVoiceInstalled')}`;
       return o;
     }),
   );
@@ -544,7 +755,7 @@ function renderVoiceOptions() {
   if (!list.length) {
     const o = document.createElement('option');
     o.value = '';
-    o.textContent = 'No voice for this language';
+    o.textContent = t('noVoiceForLanguage');
     el.voice.appendChild(o);
   }
   el.voice.value = chosen ? chosen.voiceURI : '';
@@ -552,25 +763,29 @@ function renderVoiceOptions() {
   el.rate.value = String(prefs.rate);
 }
 
+// Builds the notice from text nodes (never innerHTML with translated strings).
+function noticeContent(title, ...rest) {
+  const strong = document.createElement('strong');
+  strong.textContent = title;
+  const nodes = [strong];
+  rest.forEach((part, i) => {
+    if (i > 0) nodes.push(document.createElement('br'));
+    nodes.push(document.createTextNode(part));
+  });
+  el.notice.replaceChildren(...nodes);
+  el.notice.hidden = false;
+}
+
 function renderNotice() {
   if (!book) { el.notice.hidden = true; return; }
-  if (!synth) {
-    el.notice.innerHTML = '<strong>This viewer has no speech engine.</strong> Open this page in Chrome or Safari (share icon → open in browser).';
-    el.notice.hidden = false;
-    return;
-  }
+  if (!synth) { noticeContent(t('noEngineTitle'), ' ' + t('noEngineBody')); return; }
   if (voicesFor(state.lang).length) { el.notice.hidden = true; return; }
-  const name = langName(state.lang);
-  el.notice.innerHTML = voices.length
-    ? `<strong>No ${name} voice is installed on this device</strong>, so this book will not be read in ${name} — ` +
-      `reading it with another language's voice would sound wrong. Install one and reload this page:<br>` +
-      `macOS → System Settings → Accessibility → Spoken Content → System Voice → Manage Voices… · ` +
-      `Windows → Settings → Time &amp; Language → Speech → Add voices · ` +
-      `iPhone/iPad → Settings → Accessibility → Spoken Content → Voices · ` +
-      `Android → Settings → Google Text-to-speech → Install voice data.<br>` +
-      `Or pick another language from the menu above if the book is really in that language.`
-    : '<strong>Loading voices…</strong> If this message stays, your browser reports no speech voices at all.';
-  el.notice.hidden = false;
+  const lang = langName(state.lang);
+  if (voices.length) {
+    noticeContent(t('noVoiceTitle', { lang }), t('noVoiceBody', { lang }), t('voiceInstallSteps'), t('orPickLanguage'));
+  } else {
+    noticeContent(t('loadingVoicesTitle'), ' ' + t('loadingVoicesBody'));
+  }
 }
 
 function renderChips() {
@@ -580,8 +795,8 @@ function renderChips() {
       const chip = document.createElement('span');
       const loading = !n && !voicesSettled;
       chip.className = 'chip ' + (n ? 'ok' : loading ? '' : 'missing');
-      chip.textContent = n ? `${langName(code)} ✓` : loading ? `${langName(code)} …` : `${langName(code)} ✗ no voice`;
-      chip.title = n ? voicesFor(code).map((v) => v.name).join(', ') : `No ${langName(code)} voice installed on this device`;
+      chip.textContent = n ? `${langName(code)} ✓` : loading ? `${langName(code)} …` : `${langName(code)} ${t('chipMissing')}`;
+      chip.title = n ? voicesFor(code).map((v) => v.name).join(', ') : t('chipTitleMissing', { lang: langName(code) });
       return chip;
     }),
   );
@@ -600,7 +815,7 @@ function renderProgress() {
   const pct = Math.round((100 * done) / book.total);
   el.fill.style.width = `${pct}%`;
   el.progress.setAttribute('aria-valuenow', String(pct));
-  el.progress.setAttribute('aria-valuetext', `${pct}%, segment ${Math.min(i + 1, n)} of ${n}`);
+  el.progress.setAttribute('aria-valuetext', t('positionText', { pct, i: Math.min(i + 1, n), n }));
   el.position.textContent = `${pct}% · ${Math.min(i + 1, n)} / ${n}`;
   const prev = el.text.querySelector('.chunk.active');
   if (prev && Number(prev.dataset.i) === i) return;
@@ -618,17 +833,46 @@ function renderProgress() {
   }
 }
 
+// Static strings: everything that is not rebuilt by the render* functions below.
+function applyI18n() {
+  const lang = uiLang();
+  document.documentElement.lang = lang;
+  document.documentElement.dir = RTL_LANGS.has(lang) ? 'rtl' : 'ltr';
+  el.uiLang.value = lang;
+  el.uiLang.setAttribute('aria-label', t('uiLanguage'));
+  el.uploadLabel.textContent = t('upload');
+  el.file.setAttribute('aria-label', t('upload'));
+  el.chips.setAttribute('aria-label', t('voicesOnDevice'));
+  el.emptyTitle.textContent = t('emptyTitle');
+  el.emptyDesc.textContent = t('emptyDesc');
+  el.samplesLabel.textContent = t('samples');
+  for (const b of el.samples.querySelectorAll('button[data-lang]')) b.textContent = langName(b.dataset.lang);
+  el.creditMade.textContent = t('madeBy');
+  el.creditTag.textContent = t('tagline');
+  el.waLabel.textContent = t('whatsapp');
+  el.wa.href = `https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent(t('waMessage'))}`;
+  el.labelLang.textContent = t('readingLanguage');
+  el.labelVoice.textContent = t('voice');
+  el.labelRate.textContent = t('speed');
+  el.persist.textContent = t('persist');
+  el.stop.setAttribute('aria-label', t('stop'));
+  el.progress.setAttribute('aria-label', t('position'));
+  document.body.dataset.dropLabel = t('dropToLoad');
+}
+
 function render() {
   const has = !!book;
+  applyI18n();
   el.empty.hidden = has;
   el.samples.hidden = has;
   el.credit.hidden = has;
   el.book.hidden = !has;
-  // Only the book text follows the language's direction; the controls stay LTR so
-  // the English labels and numbers do not get bidi-scrambled in Hebrew.
+  // The controls follow the interface language (page dir); the book text follows the
+  // reading language, so a Hebrew book keeps its RTL text inside an English interface and vice versa.
   if (has) {
     el.text.dir = RTL_LANGS.has(state.lang) ? 'rtl' : 'ltr';
     el.text.lang = state.lang;
+    renderStats();
   }
   renderLangOptions();
   renderVoiceOptions();
@@ -638,7 +882,7 @@ function render() {
   renderStatus();
   const playing = state.status === 'playing';
   el.play.classList.toggle('playing', playing);
-  el.play.setAttribute('aria-label', playing ? 'Pause' : 'Play');
+  el.play.setAttribute('aria-label', t(playing ? 'pause' : 'play'));
   el.play.disabled = !canPlay();
   el.stop.disabled = !has || (state.status === 'idle' && state.index === 0 && state.offset === 0);
 }
@@ -649,6 +893,12 @@ el.file.addEventListener('change', () => { loadFile(el.file.files && el.file.fil
 el.samples.addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-sample]');
   if (btn) loadSample(btn.dataset.sample);
+});
+el.uiLang.addEventListener('change', () => {
+  uiLangSaved = el.uiLang.value;
+  try { localStorage.setItem(KEY_UI, uiLangSaved); } catch { /* storage blocked — the choice lasts for this visit */ }
+  hideError();
+  render();
 });
 el.play.addEventListener('click', togglePlay);
 el.stop.addEventListener('click', stop);
@@ -709,8 +959,7 @@ window.addEventListener('pagehide', () => {
 });
 
 if (!synth) {
-  showError('This viewer has no speech engine, so nothing can be read aloud here. If you opened this page inside another app, ' +
-    'open it in Chrome or Safari instead (share icon → open in browser) — file upload also works only there.');
+  showError(t('noEngineError'));
 } else {
   synth.addEventListener('voiceschanged', refreshVoices);
   // Safari may never fire voiceschanged and some engines deliver voices seconds later: poll for a while.

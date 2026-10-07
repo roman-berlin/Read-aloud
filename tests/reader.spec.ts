@@ -7,7 +7,12 @@ const SAMPLES = new Set(['hebrew.pdf', 'english.txt', 'russian.txt']); // shippe
 const fx = (name: string) => fileURLToPath(new URL(SAMPLES.has(name) ? `../samples/${name}` : `./fixtures/${name}`, import.meta.url));
 const FIRST_ENGLISH_LINE = "The Lighthouse Keeper's Ledger";
 
-async function open(page: Page, opts?: FakeSpeechOptions) {
+// The interface language follows the book's language unless the user picked one, so most tests
+// pin it to English (as a user who picked English would) to keep their assertions readable.
+// Pass { uiLang: null } to exercise the defaulting itself.
+async function open(page: Page, opts?: FakeSpeechOptions & { uiLang?: string | null }) {
+  const ui = opts?.uiLang === undefined ? 'en' : opts.uiLang;
+  if (ui) await page.addInitScript((lang) => localStorage.setItem('read-aloud.ui', lang), ui);
   await installFakeSpeech(page, opts);
   await page.goto('/');
 }
@@ -333,6 +338,93 @@ test('the sample buttons load a book without a file', async ({ page }) => {
   await playBtn(page).click();
   await expect.poll(() => spokenCount(page)).toBeGreaterThanOrEqual(1);
   expect((await spoken(page))[0].text).toBe('מסע אל הנגב');
+});
+
+test('with a book open, the start panel is gone and the text begins above the player bar', async ({ page }) => {
+  await open(page);
+  await page.getByRole('button', { name: 'Hebrew' }).click();
+  await expect(page.locator('#title')).toHaveText('מסע אל הנגב');
+  for (const sel of ['#empty', '#samples', '#credit']) await expect(page.locator(sel)).toBeHidden();
+  const firstText = await page.locator('.chunk').first().boundingBox();
+  const bar = await page.locator('#player').boundingBox();
+  expect(firstText!.y).toBeLessThan(bar!.y); // the book text is visible without scrolling
+});
+
+test('interface language: Hebrew flips the page to RTL and translates every visible string; the choice survives a reload', async ({ page }) => {
+  await open(page, { uiLang: null }); // no pinned value: the init script would re-pin English on every reload
+  await page.selectOption('#ui-lang', 'he');
+  const html = page.locator('html');
+  await expect(html).toHaveAttribute('dir', 'rtl');
+  await expect(html).toHaveAttribute('lang', 'he');
+  await expect(page.locator('#upload-label')).toHaveText('העלאת PDF או TXT');
+  await expect(page.locator('#empty-title')).toHaveText('הקישו כאן לבחירת ספר');
+  await expect(page.locator('#samples-label')).toHaveText('או נסו ספר לדוגמה:');
+  await expect(page.locator('#samples button')).toHaveText(['עברית', 'אנגלית', 'רוסית']);
+  await expect(page.locator('#credit')).toContainText('נבנה על ידי Automatixy');
+  await expect(page.locator('#credit')).toContainText('אנחנו בונים אוטומציות');
+  const wa = page.locator('#wa');
+  await expect(wa).toHaveText('כתבו לנו בוואטסאפ');
+  const href = (await wa.getAttribute('href'))!;
+  expect(href.startsWith('https://wa.me/972545312632?text=')).toBe(true);
+  expect(decodeURIComponent(href.split('text=')[1])).toContain('Read Aloud');
+  await expect(page.locator('#chips')).toContainText('עברית ✓');
+  await expect(page.locator('#status')).toHaveText('מוכן');
+  await expect(page.getByRole('button', { name: 'ניגון' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'עצירה' })).toBeVisible();
+
+  // Inside a book: labels, stats, option texts and the status follow too.
+  await page.getByRole('button', { name: 'עברית' }).click();
+  await expect(page.locator('#title')).toHaveText('מסע אל הנגב');
+  await expect(page.locator('#label-lang')).toHaveText('שפת הקריאה');
+  await expect(page.locator('#stats')).toContainText('עמודים');
+  await expect(page.locator('#stats')).toContainText('קטעים');
+  await expect(page.locator('#lang option').first()).toContainText('עברית (');
+  await page.getByRole('button', { name: 'ניגון' }).click();
+  await expect(page.locator('#status')).toHaveText('מקריא');
+  await page.getByRole('button', { name: 'עצירה' }).click();
+  await expect(page.locator('#status')).toHaveText('מוכן');
+
+  // Survives a reload (the saved choice beats the book's language).
+  await page.reload();
+  await expect(html).toHaveAttribute('dir', 'rtl');
+  await expect(page.locator('#ui-lang')).toHaveValue('he');
+  await expect(page.locator('#upload-label')).toHaveText('העלאת PDF או TXT');
+
+  // Russian: lang=ru, left-to-right, Russian strings.
+  await page.selectOption('#ui-lang', 'ru');
+  await expect(html).toHaveAttribute('lang', 'ru');
+  await expect(html).toHaveAttribute('dir', 'ltr');
+  await expect(page.locator('#upload-label')).toHaveText('Загрузить PDF/TXT');
+  await expect(page.locator('#status')).toHaveText('Готово');
+  await expect(page.locator('#stats')).toContainText('сегментов');
+  await expect(page.locator('#label-lang')).toHaveText('Язык чтения');
+});
+
+test('interface language defaults to the book language, then to the browser language', async ({ page }) => {
+  await open(page, { uiLang: null }); // nothing saved; Playwright's browser is en-US
+  const html = page.locator('html');
+  await expect(html).toHaveAttribute('lang', 'en');
+  await expect(page.locator('#upload-label')).toHaveText('Upload PDF or .txt');
+  await expect(page.locator('#credit')).toContainText('Made by Automatixy');
+
+  await page.getByRole('button', { name: 'Hebrew' }).click();
+  await expect(page.locator('#title')).toHaveText('מסע אל הנגב');
+  await expect(html).toHaveAttribute('lang', 'he'); // follows the book
+  await expect(html).toHaveAttribute('dir', 'rtl');
+  await expect(page.locator('#status')).toHaveText('מוכן');
+
+  await upload(page, 'russian.txt');
+  await expect(html).toHaveAttribute('lang', 'ru');
+  await expect(page.locator('#status')).toHaveText('Готово');
+
+  // An explicit pick sticks, whatever book comes next.
+  await page.selectOption('#ui-lang', 'en');
+  await upload(page, 'hebrew.pdf');
+  await expect(html).toHaveAttribute('lang', 'en');
+  await expect(page.locator('#status')).toHaveText('Ready');
+  await page.reload();
+  await expect(html).toHaveAttribute('lang', 'en');
+  expect(await page.evaluate(() => localStorage.getItem('read-aloud.ui'))).toBe('en');
 });
 
 test('the Automatixy credit shows on the start screen only, above the player bar', async ({ page }) => {
