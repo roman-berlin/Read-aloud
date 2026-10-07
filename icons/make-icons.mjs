@@ -1,15 +1,18 @@
 // Renders the PNG icons from icons/icon.svg with the Playwright Chromium already used by the
 // tests. Dev tooling only — not part of the app.  Usage: bun install && node icons/make-icons.mjs
 import { chromium } from '@playwright/test';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const here = fileURLToPath(new URL('.', import.meta.url));
-const svg = fileURLToPath(new URL('./icon.svg', import.meta.url));
+// Inline the SVG: a page set with setContent() is about:blank, which may not load file:// URLs,
+// so an <img src="file://..."> renders as a broken-image placeholder.
+const svg = readFileSync(new URL('./icon.svg', import.meta.url), 'utf8').replace(/<!--[\s\S]*?-->/g, '');
 const page = (size, scale) =>
   `<!doctype html><html><head><meta charset="utf-8"><style>
      html,body{margin:0;width:${size}px;height:${size}px;overflow:hidden;background:#121419}
-     body{display:grid;place-items:center}img{display:block;width:${size * scale}px;height:${size * scale}px}
-   </style></head><body><img src="file://${svg}"></body></html>`;
+     body{display:grid;place-items:center}svg{display:block;width:${size * scale}px;height:${size * scale}px}
+   </style></head><body>${svg}</body></html>`;
 
 const jobs = [
   ['icon-512.png', 512, 1],

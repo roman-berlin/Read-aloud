@@ -2,7 +2,7 @@
 // The app shell and pdf.js are precached on install. Online, the shell is fetched
 // network-first (so an edit shows up on the next reload without bumping a version);
 // pdf.js under vendor/ is cache-first because it only changes with its folder.
-const CACHE = 'read-aloud-v1';
+const CACHE = 'read-aloud-v2'; // bump when icons or vendor files change so installed apps refetch them
 const SHELL = [
   './',
   './index.html',
