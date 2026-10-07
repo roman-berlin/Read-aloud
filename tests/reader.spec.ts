@@ -3,8 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { ALL_VOICES, installFakeSpeech, spoken, ttsLog, type CancelEntry, type FakeSpeechOptions } from './fake-speech';
 
-const SAMPLES = new Set(['hebrew.pdf', 'english.txt', 'russian.txt']); // shipped with the app, also used as fixtures
-const fx = (name: string) => fileURLToPath(new URL(SAMPLES.has(name) ? `../samples/${name}` : `./fixtures/${name}`, import.meta.url));
+const fx = (name: string) => fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url));
 const FIRST_ENGLISH_LINE = "The Lighthouse Keeper's Ledger";
 
 // The interface language follows the book's language unless the user picked one, so most tests
@@ -329,22 +328,11 @@ test('tapping a sentence or the progress bar jumps there', async ({ page }) => {
   expect((await spoken(page))[0].text).not.toBe(FIRST_ENGLISH_LINE);
 });
 
-test('the sample buttons load a book without a file', async ({ page }) => {
-  await open(page);
-  await page.getByRole('button', { name: 'Hebrew' }).click();
-  await expect(page.locator('#title')).toHaveText('מסע אל הנגב');
-  await expect(page.locator('#lang')).toHaveValue('he');
-  await expect(page.locator('#samples')).toBeHidden();
-  await playBtn(page).click();
-  await expect.poll(() => spokenCount(page)).toBeGreaterThanOrEqual(1);
-  expect((await spoken(page))[0].text).toBe('מסע אל הנגב');
-});
-
 test('with a book open, the start panel is gone and the text begins above the player bar', async ({ page }) => {
   await open(page);
-  await page.getByRole('button', { name: 'Hebrew' }).click();
+  await upload(page, 'hebrew.pdf');
   await expect(page.locator('#title')).toHaveText('מסע אל הנגב');
-  for (const sel of ['#empty', '#samples', '#credit']) await expect(page.locator(sel)).toBeHidden();
+  for (const sel of ['#empty', '#credit']) await expect(page.locator(sel)).toBeHidden();
   const firstText = await page.locator('.chunk').first().boundingBox();
   const bar = await page.locator('#player').boundingBox();
   expect(firstText!.y).toBeLessThan(bar!.y); // the book text is visible without scrolling
@@ -358,8 +346,6 @@ test('interface language: Hebrew flips the page to RTL and translates every visi
   await expect(html).toHaveAttribute('lang', 'he');
   await expect(page.locator('#upload-label')).toHaveText('העלאת PDF או TXT');
   await expect(page.locator('#empty-title')).toHaveText('הקישו כאן לבחירת ספר');
-  await expect(page.locator('#samples-label')).toHaveText('או נסו ספר לדוגמה:');
-  await expect(page.locator('#samples button')).toHaveText(['עברית', 'אנגלית', 'רוסית']);
   await expect(page.locator('#credit')).toContainText('נבנה על ידי Automatixy');
   await expect(page.locator('#credit')).toContainText('אנחנו בונים אוטומציות');
   const wa = page.locator('#wa');
@@ -373,7 +359,7 @@ test('interface language: Hebrew flips the page to RTL and translates every visi
   await expect(page.getByRole('button', { name: 'עצירה' })).toBeVisible();
 
   // Inside a book: labels, stats, option texts and the status follow too.
-  await page.getByRole('button', { name: 'עברית' }).click();
+  await upload(page, 'hebrew.pdf');
   await expect(page.locator('#title')).toHaveText('מסע אל הנגב');
   await expect(page.locator('#label-lang')).toHaveText('שפת הקריאה');
   await expect(page.locator('#stats')).toContainText('עמודים');
@@ -407,7 +393,7 @@ test('interface language defaults to the book language, then to the browser lang
   await expect(page.locator('#upload-label')).toHaveText('Upload PDF or .txt');
   await expect(page.locator('#credit')).toContainText('Made by Automatixy');
 
-  await page.getByRole('button', { name: 'Hebrew' }).click();
+  await upload(page, 'hebrew.pdf');
   await expect(page.locator('#title')).toHaveText('מסע אל הנגב');
   await expect(html).toHaveAttribute('lang', 'he'); // follows the book
   await expect(html).toHaveAttribute('dir', 'rtl');

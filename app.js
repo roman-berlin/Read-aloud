@@ -20,11 +20,11 @@ const DEFAULT_TAG = { he: 'he-IL', en: 'en-US', ru: 'ru-RU' };
 const $ = (id) => document.getElementById(id);
 const el = {
   file: $('file'), empty: $('empty'), book: $('book'), title: $('title'), stats: $('stats'),
-  samples: $('samples'), credit: $('credit'), lang: $('lang'), voice: $('voice'), rate: $('rate'), notice: $('notice'), persist: $('persist'),
+  credit: $('credit'), lang: $('lang'), voice: $('voice'), rate: $('rate'), notice: $('notice'), persist: $('persist'),
   text: $('text'), error: $('error'), chips: $('chips'), progress: $('progress'), fill: $('fill'),
   position: $('position'), play: $('play'), stop: $('stop'), status: $('status'),
   uiLang: $('ui-lang'), uploadLabel: $('upload-label'), emptyTitle: $('empty-title'), emptyDesc: $('empty-desc'),
-  samplesLabel: $('samples-label'), creditMade: $('credit-made'), creditTag: $('credit-tag'), wa: $('wa'), waLabel: $('wa-label'),
+  creditMade: $('credit-made'), creditTag: $('credit-tag'), wa: $('wa'), waLabel: $('wa-label'),
   labelLang: $('label-lang'), labelVoice: $('label-voice'), labelRate: $('label-rate'),
 };
 
@@ -39,7 +39,6 @@ const I18N = {
     voicesOnDevice: 'Voices installed on this device',
     emptyTitle: 'Tap here to choose a book',
     emptyDesc: 'One PDF or plain-text (.txt) file at a time — or drop it anywhere on this page. Everything happens in your browser; nothing is uploaded anywhere.',
-    samples: 'Or try a sample book:',
     madeBy: 'Made by',
     tagline: 'we build automations and useful apps',
     whatsapp: 'Message us on WhatsApp',
@@ -52,7 +51,6 @@ const I18N = {
     ready: 'Ready', playing: 'Playing', paused: 'Paused', finished: 'Finished',
     readingFile: 'Reading file…',
     extracting: 'Extracting text… page {page} of {pages}',
-    downloadingSample: 'Downloading sample…',
     dropToLoad: 'Drop to load',
     untitled: 'Untitled',
     pages: { one: '{n} page', other: '{n} pages' },
@@ -84,7 +82,6 @@ const I18N = {
     errUnreadableLayer: "This PDF's text layer is unreadable (it was made with a non-Unicode font). It needs OCR before it can be read aloud, and this app does not do OCR.",
     errLangUnknown: 'Could not tell which language this book is in. Pick one from the Reading language menu.',
     errEngine: 'The speech engine stopped: {error}. Press Play to continue.',
-    errSample: 'The sample book could not be downloaded. Check the connection and try again.',
   },
   he: {
     upload: 'העלאת PDF או TXT',
@@ -92,7 +89,6 @@ const I18N = {
     voicesOnDevice: 'קולות שמותקנים במכשיר הזה',
     emptyTitle: 'הקישו כאן לבחירת ספר',
     emptyDesc: 'קובץ PDF או טקסט (TXT) אחד בכל פעם — או גררו אותו לכל מקום בדף. הכול קורה בדפדפן שלכם; שום דבר לא נשלח לשום מקום.',
-    samples: 'או נסו ספר לדוגמה:',
     madeBy: 'נבנה על ידי',
     tagline: 'אנחנו בונים אוטומציות ואפליקציות שימושיות',
     whatsapp: 'כתבו לנו בוואטסאפ',
@@ -108,7 +104,6 @@ const I18N = {
     paused: 'מושהה', finished: 'הסתיים',
     readingFile: 'קורא את הקובץ…',
     extracting: 'מחלץ טקסט… עמוד {page} מתוך {pages}',
-    downloadingSample: 'מוריד ספר לדוגמה…',
     dropToLoad: 'שחררו כדי לטעון',
     untitled: 'ללא שם',
     pages: { one: 'עמוד אחד', other: '{n} עמודים' },
@@ -141,7 +136,6 @@ const I18N = {
     errUnreadableLayer: 'שכבת הטקסט של ה-PDF הזה אינה קריאה (הוא נוצר עם גופן שאינו Unicode). הוא זקוק ל-OCR לפני שאפשר להקריא אותו, והאפליקציה הזו לא מבצעת OCR.',
     errLangUnknown: 'לא הצלחנו לזהות באיזו שפה הספר כתוב. בחרו שפה בתפריט "שפת הקריאה".',
     errEngine: 'מנוע הדיבור נעצר: {error}. לחצו על ניגון כדי להמשיך.',
-    errSample: 'לא ניתן להוריד את הספר לדוגמה. בדקו את החיבור ונסו שוב.',
   },
   ru: {
     upload: 'Загрузить PDF/TXT',
@@ -149,7 +143,6 @@ const I18N = {
     voicesOnDevice: 'Голоса, установленные на этом устройстве',
     emptyTitle: 'Нажмите здесь, чтобы выбрать книгу',
     emptyDesc: 'Один файл PDF или текстовый (TXT) за раз — или перетащите его в любое место страницы. Всё происходит в вашем браузере; ничего никуда не отправляется.',
-    samples: 'Или попробуйте книгу для примера:',
     madeBy: 'Сделано',
     tagline: 'мы создаём автоматизации и полезные приложения',
     whatsapp: 'Напишите нам в WhatsApp',
@@ -164,7 +157,6 @@ const I18N = {
     paused: 'Пауза', finished: 'Завершено',
     readingFile: 'Читаю файл…',
     extracting: 'Извлекаю текст… страница {page} из {pages}',
-    downloadingSample: 'Загружаю книгу для примера…',
     dropToLoad: 'Отпустите, чтобы загрузить',
     untitled: 'Без названия',
     pages: { one: '{n} страница', few: '{n} страницы', many: '{n} страниц', other: '{n} страницы' },
@@ -197,7 +189,6 @@ const I18N = {
     errUnreadableLayer: 'Текстовый слой этого PDF нечитаем (он сделан шрифтом без Unicode). Ему нужно распознавание (OCR), а это приложение OCR не делает.',
     errLangUnknown: 'Не удалось определить язык книги. Выберите его в меню «Язык чтения».',
     errEngine: 'Речевой движок остановился: {error}. Нажмите «Воспроизвести», чтобы продолжить.',
-    errSample: 'Не удалось загрузить книгу для примера. Проверьте соединение и попробуйте снова.',
   },
 };
 
@@ -557,21 +548,6 @@ async function loadFile(file) {
   }
 }
 
-// The sample books ship with the app so a first run (or a phone with no files) has something to read.
-async function loadSample(name) {
-  hideError();
-  setStatus('downloadingSample');
-  try {
-    const res = await fetch(`samples/${name}`);
-    if (!res.ok) throw new Error();
-    const blob = await res.blob();
-    await loadFile(new File([blob], name, { type: blob.type }));
-  } catch {
-    setStatus(null);
-    showError(t('errSample'));
-  }
-}
-
 // ---------- playback ----------
 
 const canPlay = () => !!book && !!synth && voicesFor(state.lang).length > 0;
@@ -845,8 +821,6 @@ function applyI18n() {
   el.chips.setAttribute('aria-label', t('voicesOnDevice'));
   el.emptyTitle.textContent = t('emptyTitle');
   el.emptyDesc.textContent = t('emptyDesc');
-  el.samplesLabel.textContent = t('samples');
-  for (const b of el.samples.querySelectorAll('button[data-lang]')) b.textContent = langName(b.dataset.lang);
   el.creditMade.textContent = t('madeBy');
   el.creditTag.textContent = t('tagline');
   el.waLabel.textContent = t('whatsapp');
@@ -864,7 +838,6 @@ function render() {
   const has = !!book;
   applyI18n();
   el.empty.hidden = has;
-  el.samples.hidden = has;
   el.credit.hidden = has;
   el.book.hidden = !has;
   // The controls follow the interface language (page dir); the book text follows the
@@ -890,10 +863,6 @@ function render() {
 // ---------- wiring ----------
 
 el.file.addEventListener('change', () => { loadFile(el.file.files && el.file.files[0]); el.file.value = ''; });
-el.samples.addEventListener('click', (e) => {
-  const btn = e.target.closest('button[data-sample]');
-  if (btn) loadSample(btn.dataset.sample);
-});
 el.uiLang.addEventListener('change', () => {
   uiLangSaved = el.uiLang.value;
   try { localStorage.setItem(KEY_UI, uiLangSaved); } catch { /* storage blocked — the choice lasts for this visit */ }

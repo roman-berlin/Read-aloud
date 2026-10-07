@@ -126,14 +126,6 @@ main { max-width: 760px; margin: 0 auto; padding: 20px 16px 150px; }
 .empty:hover { border-color: var(--accent); }
 .empty:focus-within { outline: 3px solid var(--accent); outline-offset: 3px; }
 .empty svg { width: 56px; height: 56px; color: var(--accent); opacity: 0.9; }
-.samples { margin: 14px 0 0; text-align: center; color: var(--fg-muted); font-size: 0.95rem; }
-.samples button {
-  min-height: 40px; margin: 4px 2px; padding: 6px 14px;
-  border-radius: 999px; border: 1px solid var(--border);
-  background: var(--bg-elev); color: var(--fg); font: inherit; cursor: pointer;
-}
-.samples button:hover { border-color: var(--accent); }
-.samples button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* Credit: a quiet line on the start screen only; hidden while a book is open. */
 .credit { margin: 40px auto 0; text-align: center; color: var(--fg-muted); font-size: 0.85rem; }
