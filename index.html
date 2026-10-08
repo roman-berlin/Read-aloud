@@ -47,11 +47,6 @@
       <span class="empty-title" id="empty-title">Tap here to choose a book</span>
       <span id="empty-desc">One PDF or plain-text (.txt) file at a time — or drop it anywhere on this page. Everything happens in your browser; nothing is uploaded anywhere.</span>
     </label>
-    <footer id="credit" class="credit">
-      <p><span id="credit-made">Made by</span> <strong>Automatixy</strong> · <span id="credit-tag">we build automations and useful apps</span></p>
-      <!-- href is filled by app.js from WHATSAPP_NUMBER, with a prefilled message in the interface language. -->
-      <a id="wa" class="wa" href="#" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg><span id="wa-label">Message us on WhatsApp</span></a>
-    </footer>
 
     <section id="book" hidden>
       <h1 id="title" dir="auto"></h1>
@@ -76,6 +71,12 @@
 
       <div id="text" class="text"></div>
     </section>
+    <!-- Below the start panel, or below the book text once a book is open: always after the content. -->
+    <footer id="credit" class="credit">
+      <p><span id="credit-made">Made by</span> <strong>Automatixy</strong> · <span id="credit-tag">we build automations and useful apps</span></p>
+      <!-- href is filled by app.js from WHATSAPP_NUMBER, with a prefilled message in the interface language. -->
+      <a id="wa" class="wa" href="#" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg><span id="wa-label">Message us on WhatsApp</span></a>
+    </footer>
   </main>
 
   <footer id="player" class="player" dir="ltr">
@@ -92,6 +93,9 @@
           <svg class="icon-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
           <svg class="icon-pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5h4v14H6zm8 0h4v14h-4z"/></svg>
         </button>
+        <!-- The speed settings scroll away while the book is read, so the bar carries it too. Tapping
+             steps through the same values as the Speed list and keeps the two in sync. -->
+        <button id="speed" class="btn speed" type="button" aria-label="Speed 1×" disabled>1×</button>
       </div>
       <span id="status" class="status" role="status" aria-live="polite">Ready</span>
     </div>

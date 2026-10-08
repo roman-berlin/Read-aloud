@@ -332,7 +332,7 @@ test('with a book open, the start panel is gone and the text begins above the pl
   await open(page);
   await upload(page, 'hebrew.pdf');
   await expect(page.locator('#title')).toHaveText('מסע אל הנגב');
-  for (const sel of ['#empty', '#credit']) await expect(page.locator(sel)).toBeHidden();
+  await expect(page.locator('#empty')).toBeHidden();
   const firstText = await page.locator('.chunk').first().boundingBox();
   const bar = await page.locator('#player').boundingBox();
   expect(firstText!.y).toBeLessThan(bar!.y); // the book text is visible without scrolling
@@ -413,7 +413,7 @@ test('interface language defaults to the book language, then to the browser lang
   expect(await page.evaluate(() => localStorage.getItem('read-aloud.ui'))).toBe('en');
 });
 
-test('the Automatixy credit shows on the start screen only, above the player bar', async ({ page }) => {
+test('the Automatixy credit shows under the start panel, and under the book text once a book is open', async ({ page }) => {
   await open(page);
   const credit = page.locator('#credit');
   await expect(credit).toBeVisible();
@@ -428,9 +428,58 @@ test('the Automatixy credit shows on the start screen only, above the player bar
   const bar = await page.locator('#player').boundingBox();
   expect(button!.y + button!.height).toBeLessThanOrEqual(bar!.y);
 
-  // Never shown while a book is open.
+  // With a book open it stays, after the last line of the book, and scrolls clear of the player bar.
   await upload(page, 'english.txt');
-  await expect(credit).toBeHidden();
+  await expect(page.locator('#book')).toBeVisible();
+  await expect(credit).toBeVisible();
+  await expect(wa).toHaveAttribute('href', /^https:\/\/wa\.me\/972545312632\?text=/);
+  const last = await page.locator('.chunk').last().boundingBox();
+  const below = await credit.boundingBox();
+  expect(below!.y).toBeGreaterThan(last!.y + last!.height);
+  await wa.scrollIntoViewIfNeeded();
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  const atEnd = await wa.boundingBox();
+  const barAtEnd = await page.locator('#player').boundingBox();
+  expect(atEnd!.y + atEnd!.height).toBeLessThanOrEqual(barAtEnd!.y);
+});
+
+test('the speed button in the player bar steps through the speeds and stays in sync with the Speed list', async ({ page }) => {
+  await open(page, { msPerWord: 40 });
+  const speed = page.locator('#speed');
+  await expect(speed).toBeDisabled(); // nothing to read yet
+  await expect(speed).toHaveText('1×');
+
+  await upload(page, 'english.txt');
+  await expect(speed).toBeEnabled();
+  await expect(speed).toHaveAccessibleName('Speed 1×');
+
+  // A tap moves to the next speed and is the same setting as the list in the book settings.
+  await speed.click();
+  await expect(speed).toHaveText('1.25×');
+  await expect(page.locator('#rate')).toHaveValue('1.25');
+  await playBtn(page).click();
+  await expect.poll(() => spokenCount(page)).toBeGreaterThanOrEqual(1);
+  expect((await spoken(page))[0].rate).toBe(1.25);
+
+  // While reading, a tap restarts the current sentence at the new speed (the list's own behaviour).
+  await speed.click();
+  await expect(speed).toHaveText('1.5×');
+  await expect.poll(async () => (await spoken(page)).at(-1)?.rate).toBe(1.5);
+  await expect(status(page)).toHaveText('Playing');
+
+  // The list drives the button too, and the last speed wraps round to the first.
+  await page.selectOption('#rate', '2');
+  await expect(speed).toHaveText('2×');
+  await speed.click();
+  await expect(speed).toHaveText('0.75×');
+  await expect(page.locator('#rate')).toHaveValue('0.75');
+
+  // The choice is remembered, and the button is labelled in the interface language.
+  await pauseBtn(page).click();
+  await page.reload();
+  await expect(speed).toHaveText('0.75×');
+  await page.selectOption('#ui-lang', 'he');
+  await expect(speed).toHaveAccessibleName('מהירות 0.75×');
 });
 
 test('voices that load late enable Play once they arrive', async ({ page }) => {

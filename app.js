@@ -22,7 +22,7 @@ const el = {
   file: $('file'), empty: $('empty'), book: $('book'), title: $('title'), stats: $('stats'),
   credit: $('credit'), lang: $('lang'), voice: $('voice'), rate: $('rate'), notice: $('notice'), persist: $('persist'),
   text: $('text'), error: $('error'), chips: $('chips'), progress: $('progress'), fill: $('fill'),
-  position: $('position'), play: $('play'), stop: $('stop'), status: $('status'),
+  position: $('position'), play: $('play'), stop: $('stop'), speed: $('speed'), status: $('status'),
   uiLang: $('ui-lang'), uploadLabel: $('upload-label'), emptyTitle: $('empty-title'), emptyDesc: $('empty-desc'),
   creditMade: $('credit-made'), creditTag: $('credit-tag'), wa: $('wa'), waLabel: $('wa-label'),
   labelLang: $('label-lang'), labelVoice: $('label-voice'), labelRate: $('label-rate'),
@@ -792,7 +792,10 @@ function renderProgress() {
   el.fill.style.width = `${pct}%`;
   el.progress.setAttribute('aria-valuenow', String(pct));
   el.progress.setAttribute('aria-valuetext', t('positionText', { pct, i: Math.min(i + 1, n), n }));
-  el.position.textContent = `${pct}% · ${Math.min(i + 1, n)} / ${n}`;
+  // Three spans with the same text as before ("35% · 12 / 340"), so phones can stack the
+  // percentage over the segment count instead of wrapping it at a random space.
+  const part = (cls, text) => Object.assign(document.createElement('span'), { className: cls, textContent: text });
+  el.position.replaceChildren(part('pct', `${pct}%`), part('sep', ' · '), part('seg', `${Math.min(i + 1, n)} / ${n}`));
   const prev = el.text.querySelector('.chunk.active');
   if (prev && Number(prev.dataset.i) === i) return;
   // Follow the voice only while the reader is following it: if the previous sentence has been
@@ -834,12 +837,19 @@ function applyI18n() {
   document.body.dataset.dropLabel = t('dropToLoad');
 }
 
+// The speed button in the player bar mirrors the Speed list: same values, same saved preference.
+function renderSpeed() {
+  const label = `${prefs.rate}×`;
+  el.speed.textContent = label;
+  el.speed.setAttribute('aria-label', `${t('speed')} ${label}`);
+  el.speed.disabled = !book;
+}
+
 function render() {
   const has = !!book;
   applyI18n();
   el.empty.hidden = has;
-  el.credit.hidden = has;
-  el.book.hidden = !has;
+  el.book.hidden = !has; // the credit after it stays: under the start panel, or under the book text
   // The controls follow the interface language (page dir); the book text follows the
   // reading language, so a Hebrew book keeps its RTL text inside an English interface and vice versa.
   if (has) {
@@ -858,6 +868,7 @@ function render() {
   el.play.setAttribute('aria-label', t(playing ? 'pause' : 'play'));
   el.play.disabled = !canPlay();
   el.stop.disabled = !has || (state.status === 'idle' && state.index === 0 && state.offset === 0);
+  renderSpeed();
 }
 
 // ---------- wiring ----------
@@ -887,7 +898,15 @@ el.voice.addEventListener('change', () => {
 el.rate.addEventListener('change', () => {
   prefs.rate = Number(el.rate.value) || 1;
   savePrefs();
+  renderSpeed();
   if (state.status === 'playing') restart();
+});
+// Next speed in the list, wrapping round; it goes through the Speed list's own change handler.
+el.speed.addEventListener('click', () => {
+  const rates = [...el.rate.options].map((o) => Number(o.value));
+  const next = rates.find((r) => r > prefs.rate) ?? rates[0];
+  el.rate.value = String(next);
+  el.rate.dispatchEvent(new Event('change'));
 });
 
 el.text.addEventListener('click', (e) => {
