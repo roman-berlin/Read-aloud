@@ -6,8 +6,10 @@ browser — the file never leaves the computer.
 
 - Upload **one** PDF or plain-text (`.txt`) file. The text is extracted in the
   browser (pdf.js for PDF).
-- A Spotify-style bar with **Play / Pause**, **Stop** and a progress line. Tap any
-  sentence, or the progress line, to jump there.
+- A Spotify-style bar with **Stop**, **Play / Pause**, a **speed** button and a
+  progress line. Tap any sentence, or the progress line, to jump there. The speed
+  button steps 0.75× → 1× → 1.25× → 1.5× → 2× and is the same setting as the Speed
+  list above the book, which scrolls out of reach while reading.
 - The book is read with the browser's own speech engine (Web Speech API), in short
   segments, so long books do not stall and Pause / Resume always work.
 - The language is detected from the text (Hebrew, English, Russian; anything else
@@ -21,10 +23,10 @@ browser — the file never leaves the computer.
   separate from the reading language. It follows the book's language until you
   pick one; the pick is remembered. Hebrew turns the whole page right-to-left;
   the book text always keeps its own direction.
-- The start screen carries a quiet "Made by Automatixy" line with a WhatsApp
-  button (prefilled message in the interface language). Both disappear as soon
-  as a book is open. The business number is the `WHATSAPP_NUMBER` constant at
-  the top of `app.js`, the only place it lives.
+- A quiet "Made by Automatixy" line with a WhatsApp button (prefilled message in
+  the interface language) sits after the content: under the start panel, or
+  under the last line of the book once one is open. The business number is the
+  `WHATSAPP_NUMBER` constant at the top of `app.js`, the only place it lives.
 - It is a **PWA**: install it like an app (desktop, Android, iPhone) and it keeps
   working with no internet, book included.
 

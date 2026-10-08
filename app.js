@@ -908,6 +908,9 @@ el.speed.addEventListener('click', () => {
   el.rate.value = String(next);
   el.rate.dispatchEvent(new Event('change'));
 });
+// A mouse click must not leave focus on the button, or the page-wide Space shortcut (play/pause)
+// would step the speed instead. Keyboard users still Tab to it and press Enter or Space.
+el.speed.addEventListener('mousedown', (e) => e.preventDefault());
 
 el.text.addEventListener('click', (e) => {
   const span = e.target.closest('.chunk');

@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { ALL_VOICES, installFakeSpeech, spoken, ttsLog, type CancelEntry, type FakeSpeechOptions } from './fake-speech';
+import { ALL_VOICES, installFakeSpeech, spoken, ttsLog, type CancelEntry, type SpeakEntry, type FakeSpeechOptions } from './fake-speech';
 
 const fx = (name: string) => fileURLToPath(new URL(`./fixtures/${name}`, import.meta.url));
 const FIRST_ENGLISH_LINE = "The Lighthouse Keeper's Ledger";
@@ -443,6 +443,51 @@ test('the Automatixy credit shows under the start panel, and under the book text
   expect(atEnd!.y + atEnd!.height).toBeLessThanOrEqual(barAtEnd!.y);
 });
 
+test('after a mouse click on the speed button, Space still pauses instead of stepping the speed again', async ({ page }) => {
+  await open(page, { msPerWord: 200 });
+  await upload(page, 'english.txt');
+  await page.locator('.chunk').first().click();
+  await page.keyboard.press('Space');
+  await expect(status(page)).toHaveText('Playing');
+  await page.locator('#speed').click();
+  await expect(page.locator('#speed')).toHaveText('1.25×');
+  await expect(page.locator('#speed')).not.toBeFocused();
+  await page.keyboard.press('Space');
+  await expect(status(page)).toHaveText('Paused');
+  await expect(page.locator('#speed')).toHaveText('1.25×');
+});
+
+test('Tab goes from the book settings to the player, not to the credit at the end of the book', async ({ page }) => {
+  await open(page);
+  await upload(page, 'english.txt');
+  await page.locator('#rate').focus();
+  const y = await page.evaluate(() => window.scrollY);
+  await page.keyboard.press('Tab');
+  await expect(page.locator('#progress')).toBeFocused();
+  expect(await page.evaluate(() => window.scrollY)).toBe(y); // no jump to the last screen of the book
+  await page.keyboard.press('Tab');
+  await expect(page.locator('#play')).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(page.locator('#speed')).toBeFocused(); // Stop is skipped while disabled
+  await page.keyboard.press('Tab');
+  await expect(page.locator('#wa')).toBeFocused(); // the credit comes last
+});
+
+test('the position reads "35% · 12 / 340"; on narrow screens the percentage stacks over the count', async ({ page }) => {
+  await open(page);
+  await upload(page, 'english.txt');
+  await page.locator('.chunk').nth(3).click();
+  const n = await page.locator('.chunk').count();
+  await expect(position(page)).toHaveText(new RegExp(`^\\d+% · 4 / ${n}$`)); // the text itself never changes
+  const pct = await page.locator('#position .pct').boundingBox();
+  const seg = await page.locator('#position .seg').boundingBox();
+  if (page.viewportSize()!.width <= 600) {
+    expect(seg!.y).toBeGreaterThan(pct!.y + pct!.height - 1); // two lines: "35%" over "4 / 22"
+  } else {
+    expect(Math.abs(seg!.y - pct!.y)).toBeLessThan(4); // one line on a wide screen
+  }
+});
+
 test('the speed button in the player bar steps through the speeds and stays in sync with the Speed list', async ({ page }) => {
   await open(page, { msPerWord: 40 });
   const speed = page.locator('#speed');
@@ -462,9 +507,17 @@ test('the speed button in the player bar steps through the speeds and stays in s
   expect((await spoken(page))[0].rate).toBe(1.25);
 
   // While reading, a tap restarts the current sentence at the new speed (the list's own behaviour).
+  // The app cancels only on load / restart / pause / stop, so a cancel right before the first 1.5×
+  // utterance can only be the restart — and it must pick up the same sentence, not the next one.
+  const before = (await ttsLog(page)).length;
   await speed.click();
   await expect(speed).toHaveText('1.5×');
   await expect.poll(async () => (await spoken(page)).at(-1)?.rate).toBe(1.5);
+  const log = (await ttsLog(page)).slice(before);
+  const i = log.findIndex((e) => e.type === 'speak' && e.rate === 1.5);
+  const cut = log[i - 1] as CancelEntry | undefined;
+  expect(cut?.type).toBe('cancel');
+  expect(cut!.text!.endsWith((log[i] as SpeakEntry).text)).toBe(true);
   await expect(status(page)).toHaveText('Playing');
 
   // The list drives the button too, and the last speed wraps round to the first.
