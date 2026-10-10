@@ -7,7 +7,7 @@ browser — the file never leaves the computer.
 - Upload **one** PDF or plain-text (`.txt`) file. The text is extracted in the
   browser (pdf.js for PDF). Hebrew lines are put back in reading order from where
   their pieces sit on the page, so tables (receipts, invoices) read cell by cell with
-  spaces between cells (also when a cell wraps onto a second line), numbers stay next to
+  spaces between cells (also when a cell wraps onto a second or third line), numbers stay next to
   their words and brackets face the right way.
 - A Spotify-style bar with **Stop**, **Play / Pause**, a **speed** button and a
   progress line. Tap any sentence, or the progress line, to jump there. The speed
@@ -135,8 +135,8 @@ whose text layer pdf.js reads backwards, is written by
 `tests/fixtures/src/make-mirrored-pdf.py` (needs `pip install fonttools`), and
 `receipt-visual.pdf`, a Hebrew receipt drawn cell by cell from right to left the way
 invoicing programs draw one, by `tests/fixtures/src/make-receipt-pdf.py` (same need).
-`receipt-wrapped.pdf` (same script) has table cells that wrap onto a second line, drawn
-line by line and cell by cell, and a dense table whose rows must stay rows.
+`receipt-wrapped.pdf` (same script) has table cells that wrap onto a second or third
+line, drawn line by line and cell by cell, and dense tables whose rows must stay rows.
 `receipt-chrome.pdf` is the same kind of receipt printed from Chrome. All fixture texts are
 original and written for these tests; the receipts' names and numbers are made up.
 

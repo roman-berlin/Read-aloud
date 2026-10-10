@@ -187,7 +187,7 @@ for (const [file, how] of [
   });
 }
 
-test('table cells that wrap onto a second line read cell by cell, and a dense table keeps its rows', async ({ page }) => {
+test('table cells that wrap onto a second or third line read cell by cell, and dense tables keep their rows', async ({ page }) => {
   // tests/fixtures/receipt-wrapped.pdf: a header row drawn line by line (all first lines, then all
   // second lines), which read "אופן תאריך חברת… / תשלום פירעון אשראי…"; rows drawn cell by cell
   // with tight leading; and a dense three-row table that must not be read column by column.
@@ -200,6 +200,9 @@ test('table cells that wrap onto a second line read cell by cell, and a dense ta
   expect(text).toBe(norm(expected));
   expect(text).toContain('אופן תשלום תאריך פירעון חברת אשראי מס\' כרטיס תוקף כרטיס סה"כ (₪)');
   expect(text).toContain('מוצר כמות מחיר שמן מנורה 2 4.50 פתילה 5 1.20');
+  // three-line cells, and a dense table whose last row lacks a cell (still rows, not columns)
+  expect(text).toContain('אופן תשלום בפועל תאריך פירעון חברת אשראי מנפיקה מס\' כרטיס תוקף כרטיס אשראי סה"כ');
+  expect(text).toContain('מוצר כמות מחיר שמן מנורה 2 4.50 פתילה 5 1.20 גפרורים 0.90');
 });
 
 test('without a Hebrew voice the app explains instead of reading in the wrong language', async ({ page }) => {
