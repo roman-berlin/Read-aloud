@@ -160,6 +160,34 @@ test('a Hebrew PDF whose text layer comes out mirrored is repaired before readin
   expect(s[1].text).toContain('משפחה יקרה');
 });
 
+for (const [file, how] of [
+  ['receipt-visual.pdf', 'cells drawn right to left, Hebrew stored in screen order (the way many invoicing programs write it)'],
+  ['receipt-chrome.pdf', 'printed from Chrome, which draws a line\'s Hebrew and numbers left to right as separate pieces'],
+]) {
+  test(`a Hebrew receipt with a table reads in order, with spaces between cells and brackets the right way round: ${file}`, async ({ page }) => {
+    // ${how}. pdf.js glued the cells together ("אופן תשלוםתאריך פירעון"), returned "(₪)" as
+    // ")₪(", and for Chrome put numbers before the words they follow ("2026 הערות: תשלום").
+    await open(page, { msPerWord: 20 });
+    await upload(page, file);
+    await expect(page.locator('#lang')).toHaveValue('he');
+    const expected = await readFile(fx(file.replace('.pdf', '.expected.txt')), 'utf8');
+    const norm = (s: string) => s.replace(/\s+/g, ' ').trim();
+    expect(norm(await page.locator('#text').innerText())).toBe(norm(expected));
+    // What the voice is given: the cells as separate words, the amount as one number.
+    await playBtn(page).click();
+    const segments = await page.locator('.chunk').count();
+    await expect.poll(() => spokenCount(page)).toBeGreaterThanOrEqual(Math.min(3, segments));
+    await stopBtn(page).click();
+    expect((await spoken(page)).map((u) => u.text).join(' ')).not.toMatch(/\)₪\(|[\u05D0-\u05EA]\d|\d[\u05D0-\u05EA]/);
+    const all = (await page.locator('.chunk').allTextContents()).join(' ');
+    expect(all).toContain('אופן תשלום תאריך פירעון חברת אשראי');
+    expect(all).toContain('סה"כ (₪)');
+    expect(all).toContain('לאומי קארד 0690 01/32 1 75.76');
+    expect(all).toContain('הערות: תשלום חודש אוגוסט 2026 (כולל מע"מ)');
+    expect(all).not.toMatch(/\)₪\(|[\u05D0-\u05EA]\d|\d[\u05D0-\u05EA]/); // no reversed brackets, no word glued to a number
+  });
+}
+
 test('without a Hebrew voice the app explains instead of reading in the wrong language', async ({ page }) => {
   await open(page, { voices: ALL_VOICES.filter((v) => !/^(he|iw)/.test(v.lang)) });
   await expect(page.locator('#chips')).toContainText('Hebrew ✗');

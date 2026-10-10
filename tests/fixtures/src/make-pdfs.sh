@@ -12,4 +12,5 @@ render() { # $1 = html name, $2 = output path
 }
 render hebrew "$here/../hebrew.pdf"
 render scanned "$here/../scanned.pdf"
+render receipt "$here/../receipt-chrome.pdf"
 rm -rf "$tmp"

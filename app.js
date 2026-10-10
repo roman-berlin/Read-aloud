@@ -256,35 +256,182 @@ function looksScanned(pages) {
 // pdf.js only marks line ends. A paragraph break (or a heading) shows up as a vertical gap
 // clearly larger than the page's usual line spacing, or as a change of font size — mark
 // those with a blank line so chunking does not glue a heading to the sentence after it.
+// Returns the page twice: `fixed` with brackets mirrored back in right-to-left text, and
+// `plain` without, for PDFs whose Hebrew comes out mirrored and is reversed back later.
 function pageText(items) {
   // The EOL marker is often an empty item already positioned on the next line, so measure
   // from the last item of the line that actually carries text.
   const lines = [];
-  let line = '';
+  let line = [];
   let lastText = null;
   for (let i = 0; i < items.length; i++) {
     const item = items[i];
-    line += item.str;
+    if (item.str) line.push(item);
     if (item.str && item.str.trim()) lastText = item;
     if (!item.hasEOL) continue;
     let next = null;
     for (let j = i + 1; j < items.length; j++) if (items[j].str && items[j].str.trim()) { next = items[j]; break; }
     const gap = lastText && next ? Math.abs(lastText.transform[5] - next.transform[5]) : 0;
-    lines.push({ text: line, gap, height: lastText ? lastText.height || 0 : 0, nextHeight: next ? next.height || 0 : 0 });
-    line = '';
+    lines.push({ items: line, gap, height: lastText ? lastText.height || 0 : 0, nextHeight: next ? next.height || 0 : 0 });
+    line = [];
     lastText = null;
   }
-  if (line) lines.push({ text: line, gap: 0, height: 0, nextHeight: 0 });
+  if (line.length) lines.push({ items: line, gap: 0, height: 0, nextHeight: 0 });
   const gaps = lines.map((l) => l.gap).filter((g) => g > 0).sort((a, b) => a - b);
   const usual = gaps.length ? gaps[Math.floor(gaps.length / 2)] : 0;
-  let out = '';
+  let rtl = 0, ltr = 0;
+  for (const it of items) for (const ch of it.str) { const t = strongType(ch); if (t === 'R') rtl++; else if (t === 'L') ltr++; }
+  const rtlPage = rtl > ltr;
+  let plain = '', fixed = '';
   lines.forEach((l, i) => {
-    out += l.text;
+    plain += lineText(l.items, false, rtlPage);
+    fixed += lineText(l.items, true, rtlPage);
     if (i === lines.length - 1) return;
     const sizeChange = l.height && l.nextHeight && Math.abs(l.height - l.nextHeight) > 0.2 * Math.max(l.height, l.nextHeight);
-    out += (usual && l.gap > 1.3 * usual) || sizeChange ? '\n\n' : '\n';
+    const br = (usual && l.gap > 1.3 * usual) || sizeChange ? '\n\n' : '\n';
+    plain += br;
+    fixed += br;
   });
-  return out;
+  return { plain, fixed };
+}
+
+// ---- one line of a PDF page, rebuilt from where its pieces sit ----
+// pdf.js hands over a line as pieces in drawing order. Three things go wrong with Hebrew:
+// 1. A space is added only when the pen moves forward, but a Hebrew table is drawn right to
+//    left, so its cells come out glued together ("אופן תשלוםתאריך פירעון").
+// 2. Some producers (Chrome among them) draw a line's runs left to right, so a line with a
+//    number or an English word comes out in screen order ("2026 תשלום חודש").
+// 3. pdf.js turns screen order into reading order but never mirrors brackets back, so
+//    "(₪)" comes out ")₪(".
+// So right-to-left lines are put back in reading order from the pieces' positions (the
+// Unicode bidi rules applied to whole pieces), a space goes wherever a visible gap separates
+// two pieces, and brackets that were reversed are mirrored back.
+const RTL_LETTER = /[\u05D0-\u05EA\u05F0-\u05F2\u0620-\u064A\u066E-\u06D3\uFB1D-\uFDFF\uFE70-\uFEFC]/;
+const MIRROR = { '(': ')', ')': '(', '[': ']', ']': '[', '{': '}', '}': '{', '<': '>', '>': '<', '«': '»', '»': '«', '‹': '›', '›': '‹' };
+const PEEL = /[\s.,:;!?|'"\u2026\u2013\u2014]/; // punctuation that can sit on either side of an English word or a number
+
+function strongType(ch) {
+  if (RTL_LETTER.test(ch)) return 'R';
+  if (/\p{L}/u.test(ch)) return 'L';
+  if (/\p{Nd}/u.test(ch)) return 'EN';
+  return null;
+}
+
+// Inside one piece that pdf.js reversed: a bracket between right-to-left text (or numbers)
+// was reversed with it and must be mirrored; one inside an English run was not.
+function mirrorBrackets(str, para) {
+  if (!/[()[\]{}<>«»‹›]/.test(str)) return str;
+  const chars = Array.from(str);
+  const types = chars.map(strongType);
+  let last = para;
+  for (let i = 0; i < types.length; i++) {
+    if (types[i] === 'EN') { if (last === 'L') types[i] = 'L'; } else if (types[i]) last = types[i];
+  }
+  const side = (i, step) => {
+    for (let j = i + step; j >= 0 && j < types.length; j += step) if (types[j]) return types[j] === 'L' ? 'L' : 'R';
+    return para;
+  };
+  return chars.map((c, i) => {
+    if (!MIRROR[c]) return c;
+    const before = side(i, -1), after = side(i, 1);
+    return (before === after ? before : para) === 'R' ? MIRROR[c] : c;
+  }).join('');
+}
+
+function box(item) {
+  const x = item.transform[4], w = item.width || 0;
+  return { left: Math.min(x, x + w), right: Math.max(x, x + w) };
+}
+// Two pieces with daylight between them are separate words or cells.
+function apart(a, b, size) {
+  const A = box(a), B = box(b);
+  return Math.max(B.left - A.right, A.left - B.right) > 0.15 * size;
+}
+const flat = (item) => item.transform[0] > 0 && Math.abs(item.transform[1]) < 1e-3 && Math.abs(item.transform[2]) < 1e-3;
+
+function lineText(items, mirror, rtlPage) {
+  if (!items.length) return '';
+  const own = (it) => (mirror && RTL_LETTER.test(it.str) ? mirrorBrackets(it.str, it.dir === 'rtl' ? 'R' : 'L') : it.str);
+  const size = Math.max(...items.map((it) => it.height || 0)) || 10;
+  let rtl = 0, ltr = 0;
+  for (const it of items) for (const ch of it.str) { const t = strongType(ch); if (t === 'R') rtl++; else if (t === 'L') ltr++; }
+  const geometry = items.every(flat);
+
+  // Left-to-right (or unmeasurable) lines keep pdf.js's order; only missing spaces are added.
+  if (!rtl || rtl < ltr || !geometry) {
+    let out = '', prev = null, spaced = true;
+    for (const it of items) {
+      const s = own(it);
+      if (!s.trim()) { out += s; spaced = true; continue; }
+      if (prev && geometry && !spaced && !/\s$/.test(out) && !/^\s/.test(s) && apart(prev, it, size)) out += ' ';
+      out += s;
+      prev = it;
+      spaced = /\s$/.test(s);
+    }
+    // An English sentence on a Hebrew page is drawn with its full stop at the left end.
+    const stray = !rtl && rtlPage && out.match(/^([.,:;!?]+)(\p{L}[^]*)$/u);
+    return stray ? stray[2] + stray[1] : out;
+  }
+
+  // Right-to-left line: pieces in screen order (left to right), as units of one direction.
+  const sorted = items.map((it, i) => ({ it, i, left: box(it).left })).sort((a, b) => a.left - b.left || a.i - b.i);
+  const units = [];
+  let prev = null;
+  for (const { it } of sorted) {
+    const s = it.str;
+    if (!s.trim()) { units.push({ t: s, c: 'N' }); prev = null; continue; }
+    if (prev && apart(prev, it, size)) units.push({ t: ' ', c: 'N' });
+    prev = it;
+    if (RTL_LETTER.test(s)) { units.push({ t: own(it), c: 'R' }); continue; }
+    const c = /\p{L}/u.test(s) ? 'L' : /\p{Nd}/u.test(s) ? 'EN' : 'N';
+    if (c === 'N') { units.push({ t: s, c }); continue; }
+    // Punctuation glued to the outside of an English word or a number belongs to the
+    // right-to-left text around it (the full stop of "באמצעות ACME Books." is drawn at the left).
+    const chars = Array.from(s);
+    let a = 0, b = chars.length;
+    while (a < b && PEEL.test(chars[a])) a++;
+    while (b > a && PEEL.test(chars[b - 1])) b--;
+    for (const ch of chars.slice(0, a)) units.push({ t: ch, c: 'N' });
+    units.push({ t: chars.slice(a, b).join(''), c });
+    for (const ch of chars.slice(b)) units.push({ t: ch, c: 'N' });
+  }
+  // The bidi rules (W7, N1, N2, I2, L2) over whole units, paragraph right to left.
+  let last = 'R';
+  for (const u of units) {
+    if (u.c === 'EN') { if (last === 'L') u.c = 'L'; } else if (u.c !== 'N') last = u.c;
+  }
+  const strong = (i, step) => {
+    for (let j = i; j >= 0 && j < units.length; j += step) if (units[j].c !== 'N') return units[j].c === 'L' ? 'L' : 'R';
+    return 'R';
+  };
+  for (let i = 0; i < units.length; i++) {
+    const u = units[i];
+    if (u.c === 'N') u.level = strong(i, -1) === 'L' && strong(i, 1) === 'L' ? 2 : 1;
+    else u.level = u.c === 'R' ? 1 : 2;
+  }
+  const order = [];
+  for (let i = 0; i < units.length;) {
+    let j = i;
+    while (j < units.length && (units[j].level === 2) === (units[i].level === 2)) j++;
+    const run = units.slice(i, j);
+    order.push(...(units[i].level === 2 ? run : run.reverse()));
+    i = j;
+  }
+  // The runs above are in screen order with right-to-left runs already reversed; reading
+  // order is the whole sequence of runs from right to left.
+  const runs = [];
+  for (let i = 0; i < order.length;) {
+    let j = i;
+    while (j < order.length && (order[j].level === 2) === (order[i].level === 2)) j++;
+    runs.push(order.slice(i, j));
+    i = j;
+  }
+  return runs
+    .reverse()
+    .flat()
+    .map((u) => (mirror && u.c === 'N' && u.level === 1 ? Array.from(u.t, (ch) => MIRROR[ch] || ch).join('') : u.t))
+    .join('')
+    .replace(/ {2,}/g, ' ');
 }
 
 // Some Hebrew PDFs store each line's glyphs in logical order and place them right-to-left,
@@ -326,11 +473,14 @@ async function readPdf(file, onProgress) {
     const meta = await pdf.getMetadata().catch(() => null);
     const metaTitle = String((meta && meta.info && meta.info.Title) || '').trim();
     const pages = [];
+    const fixedPages = [];
     for (let p = 1; p <= pdf.numPages; p++) {
       onProgress(p, pdf.numPages);
       const page = await pdf.getPage(p);
       const content = await page.getTextContent();
-      pages.push(pageText(content.items));
+      const { plain, fixed } = pageText(content.items);
+      pages.push(plain);
+      fixedPages.push(fixed);
       page.cleanup();
     }
     if (looksScanned(pages)) throw new Error(t('errScanned'));
@@ -342,6 +492,7 @@ async function readPdf(file, onProgress) {
       throw new Error(t('errUnreadableLayer'));
     }
     if (hebrewLooksMirrored(text)) text = text.split('\n').map(unmirrorLine).join('\n');
+    else text = fixedPages.join('\n\n'); // same text, brackets mirrored back where pdf.js reversed them
     text = text.replace(/(\p{Ll})[-\u00AD]\n(\p{Ll})/gu, '$1$2'); // re-join words hyphenated across a line break (any script)
     const title = metaTitle.replace(/^Microsoft Word - /, '').replace(/\.(docx?|odt|rtf|txt)$/i, '').trim();
     return { title: title || baseName(file.name), text, pages: pdf.numPages };
