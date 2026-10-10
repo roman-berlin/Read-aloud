@@ -282,16 +282,24 @@ function pageText(items) {
   let rtl = 0, ltr = 0;
   for (const it of items) for (const ch of it.str) { const t = strongType(ch); if (t === 'R') rtl++; else if (t === 'L') ltr++; }
   const rtlPage = rtl > ltr;
-  let plain = '', fixed = '';
-  lines.forEach((l, i) => {
-    plain += lineText(l.items, false, rtlPage);
-    fixed += lineText(l.items, true, rtlPage);
-    if (i === lines.length - 1) return;
-    const sizeChange = l.height && l.nextHeight && Math.abs(l.height - l.nextHeight) > 0.2 * Math.max(l.height, l.nextHeight);
-    const br = (usual && l.gap > 1.3 * usual) || sizeChange ? '\n\n' : '\n';
-    plain += br;
-    fixed += br;
-  });
+  // `plain` keeps every pdf.js line; `fixed` also rejoins table cells that wrapped onto a second line.
+  const join = (rows, render) => {
+    const at = (i) => rows[i] || lines[i];
+    let out = '';
+    for (let i = 0; i < lines.length; i++) {
+      if (rows[i] === null) continue; // the second line of a wrapped row, already part of the row above
+      const l = at(i);
+      out += render(l);
+      let n = i + 1;
+      while (n < lines.length && rows[n] === null) n++;
+      if (n >= lines.length) break;
+      const sizeChange = l.height && l.nextHeight && Math.abs(l.height - l.nextHeight) > 0.2 * Math.max(l.height, l.nextHeight);
+      out += (usual && l.gap > 1.3 * usual) || sizeChange ? '\n\n' : '\n';
+    }
+    return out;
+  };
+  const plain = join([], (l) => lineText(l.items, false, rtlPage));
+  const fixed = join(joinWrappedCells(lines, rtlPage), (l) => l.text ?? lineText(l.items, true, rtlPage));
   return { plain, fixed };
 }
 
@@ -345,9 +353,52 @@ function box(item) {
 // Two pieces with daylight between them are separate words or cells.
 function apart(a, b, size) {
   const A = box(a), B = box(b);
-  return Math.max(B.left - A.right, A.left - B.right) > 0.15 * size;
+  return Math.max(B.left - A.right, A.left - B.right) > 0.15 * size || Math.abs(a.transform[5] - b.transform[5]) > 0.5 * size;
 }
 const flat = (item) => item.transform[0] > 0 && Math.abs(item.transform[1]) < 1e-3 && Math.abs(item.transform[2]) < 1e-3;
+
+// A table row whose cells wrap onto a second line is drawn by some programs line by line:
+// all the cells' first lines, then all their second lines, so it reads "אופן תאריך חברת /
+// תשלום פירעון אשראי". When two lines sit closer together than the lines around them and
+// every piece of the second line sits under a different column of the first, they are one
+// row: each column's two lines are joined and the columns read in order. Only pairs —
+// three equally tight lines are as likely to be a dense table's rows as a three-line cell.
+function columns(items, size) {
+  const segs = [];
+  const sorted = items.filter((it) => it.str.trim()).map((it) => ({ it, ...box(it) })).sort((a, b) => a.left - b.left);
+  for (const b of sorted) {
+    const s = segs[segs.length - 1];
+    if (s && b.left - s.right <= 0.8 * size) { s.items.push(b.it); s.right = Math.max(s.right, b.right); }
+    else segs.push({ left: b.left, right: b.right, items: [b.it] });
+  }
+  return segs;
+}
+function joinWrappedCells(lines, rtlPage) {
+  const rows = [];
+  for (let i = 0; i + 1 < lines.length; i++) {
+    const A = lines[i], B = lines[i + 1];
+    if (rows[i] !== undefined || !A.items.every(flat) || !B.items.every(flat)) continue;
+    const size = Math.max(...A.items.map((it) => it.height || 0)) || 10;
+    const step = A.gap;
+    if (!(step > 0 && step <= 1.35 * size)) continue;
+    const before = i > 0 && lines[i - 1].gap ? lines[i - 1].gap : Infinity;
+    const after = i + 2 < lines.length && B.gap ? B.gap : Infinity;
+    if (before < 1.25 * step || after < 1.25 * step) continue;
+    const top = columns(A.items, size), bottom = columns(B.items, size);
+    if (top.length < 2 || !bottom.length || bottom.length > top.length) continue;
+    const under = bottom.map((b) => top.filter((t) => Math.min(t.right, b.right) - Math.max(t.left, b.left) > 0));
+    if (under.some((u) => u.length !== 1) || new Set(under.map((u) => u[0])).size !== under.length) continue;
+    let rtl = 0, ltr = 0;
+    for (const it of [...A.items, ...B.items]) for (const ch of it.str) { const t = strongType(ch); if (t === 'R') rtl++; else if (t === 'L') ltr++; }
+    const order = rtl && rtl >= ltr ? [...top].sort((a, b) => b.right - a.right) : top;
+    const text = order
+      .map((t) => [t.items, ...bottom.filter((_, k) => under[k][0] === t).map((b) => b.items)].map((part) => lineText(part, true, rtlPage)).join(' '))
+      .join(' ');
+    rows[i] = { text, gap: B.gap, height: A.height, nextHeight: B.nextHeight };
+    rows[i + 1] = null;
+  }
+  return rows;
+}
 
 function lineText(items, mirror, rtlPage) {
   if (!items.length) return '';
