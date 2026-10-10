@@ -5,7 +5,9 @@ person, one book, no login, no account, no server. Everything runs inside the
 browser — the file never leaves the computer.
 
 - Upload **one** PDF or plain-text (`.txt`) file. The text is extracted in the
-  browser (pdf.js for PDF).
+  browser (pdf.js for PDF). Hebrew lines are put back in reading order from where
+  their pieces sit on the page, so tables (receipts, invoices) read cell by cell with
+  spaces between cells, numbers stay next to their words and brackets face the right way.
 - A Spotify-style bar with **Stop**, **Play / Pause**, a **speed** button and a
   progress line. Tap any sentence, or the progress line, to jump there. The speed
   button steps 0.75× → 1× → 1.25× → 1.5× → 2× and is the same setting as the Speed
@@ -129,8 +131,11 @@ a browser and load `tests/fixtures/hebrew.pdf`, `english.txt` and `russian.txt`.
 The PDF fixtures are generated from `tests/fixtures/src/*.html` by
 `tests/fixtures/src/make-pdfs.sh` (headless Chromium); `hebrew-mirrored.pdf`,
 whose text layer pdf.js reads backwards, is written by
-`tests/fixtures/src/make-mirrored-pdf.py` (needs `pip install fonttools`). All fixture texts are
-original and written for these tests.
+`tests/fixtures/src/make-mirrored-pdf.py` (needs `pip install fonttools`), and
+`receipt-visual.pdf`, a Hebrew receipt drawn cell by cell from right to left the way
+invoicing programs draw one, by `tests/fixtures/src/make-receipt-pdf.py` (same need).
+`receipt-chrome.pdf` is the same kind of receipt printed from Chrome. All fixture texts are
+original and written for these tests; the receipts' names and numbers are made up.
 
 ## Deliberately not here
 
