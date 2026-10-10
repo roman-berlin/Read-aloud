@@ -357,12 +357,14 @@ function apart(a, b, size) {
 }
 const flat = (item) => item.transform[0] > 0 && Math.abs(item.transform[1]) < 1e-3 && Math.abs(item.transform[2]) < 1e-3;
 
-// A table row whose cells wrap onto a second line is drawn by some programs line by line:
-// all the cells' first lines, then all their second lines, so it reads "אופן תאריך חברת /
-// תשלום פירעון אשראי". When two lines sit closer together than the lines around them and
-// every piece of the second line sits under a different column of the first, they are one
-// row: each column's two lines are joined and the columns read in order. Only pairs —
-// three equally tight lines are as likely to be a dense table's rows as a three-line cell.
+// A table row whose cells wrap is drawn by some programs line by line: all the cells' first
+// lines, then all their second lines, so it reads "אופן תאריך חברת / תשלום פירעון אשראי".
+// Lines that sit closer together than the lines around them, with every piece of a lower
+// line under a different column of the top line, are one row: each column's lines are
+// joined and the columns read in order. A dense table looks the same, so a block of three
+// or four lines is joined only when it looks like wrapping: the second line has fewer pieces
+// than the first and none has more than the line above (only the longest cells go on) and no column holds a number on two lines
+// (numbers do not wrap; a column of numbers is a table column).
 function columns(items, size) {
   const segs = [];
   const sorted = items.filter((it) => it.str.trim()).map((it) => ({ it, ...box(it) })).sort((a, b) => a.left - b.left);
@@ -373,29 +375,42 @@ function columns(items, size) {
   }
   return segs;
 }
+const NUMBER = /^[\d\s.,/:%\u20AA$€+-]+$/u;
 function joinWrappedCells(lines, rtlPage) {
   const rows = [];
   for (let i = 0; i + 1 < lines.length; i++) {
-    const A = lines[i], B = lines[i + 1];
-    if (rows[i] !== undefined || !A.items.every(flat) || !B.items.every(flat)) continue;
+    const A = lines[i];
     const size = Math.max(...A.items.map((it) => it.height || 0)) || 10;
     const step = A.gap;
-    if (!(step > 0 && step <= 1.35 * size)) continue;
+    if (rows[i] !== undefined || !(step > 0 && step <= 1.35 * size)) continue;
+    let j = i + 1; // the tight block is lines i..j, evenly spaced
+    while (j + 1 < lines.length && j - i < 3 && Math.abs(lines[j].gap - step) <= 0.15 * step) j++;
+    const block = lines.slice(i, j + 1);
     const before = i > 0 && lines[i - 1].gap ? lines[i - 1].gap : Infinity;
-    const after = i + 2 < lines.length && B.gap ? B.gap : Infinity;
-    if (before < 1.25 * step || after < 1.25 * step) continue;
-    const top = columns(A.items, size), bottom = columns(B.items, size);
-    if (top.length < 2 || !bottom.length || bottom.length > top.length) continue;
-    const under = bottom.map((b) => top.filter((t) => Math.min(t.right, b.right) - Math.max(t.left, b.left) > 0));
-    if (under.some((u) => u.length !== 1) || new Set(under.map((u) => u[0])).size !== under.length) continue;
+    const after = j + 1 < lines.length && lines[j].gap ? lines[j].gap : Infinity;
+    if (before < 1.25 * step || after < 1.25 * step || !block.every((l) => l.items.every(flat))) continue;
+    const top = columns(A.items, size);
+    const below = block.slice(1).map((l) => columns(l.items, size));
+    if (top.length < 2) continue;
+    const homes = below.map((segs) => segs.map((b) => top.filter((t) => Math.min(t.right, b.right) - Math.max(t.left, b.left) > 0)));
+    if (homes.some((h) => !h.length || h.some((u) => u.length !== 1) || new Set(h.map((u) => u[0])).size !== h.length)) continue;
+    if (below.length > 1) {
+      const counts = [top.length, ...below.map((segs) => segs.length)];
+      if (counts[1] >= counts[0] || counts.some((c, k) => k > 1 && c > counts[k - 1])) continue;
+      const numbers = new Map(top.map((t) => [t, NUMBER.test(t.items.map((it) => it.str).join('')) ? 1 : 0]));
+      below.forEach((segs, k) => segs.forEach((b, n) => { if (NUMBER.test(b.items.map((it) => it.str).join(''))) numbers.set(homes[k][n][0], numbers.get(homes[k][n][0]) + 1); }));
+      if ([...numbers.values()].some((v) => v > 1)) continue;
+    }
     let rtl = 0, ltr = 0;
-    for (const it of [...A.items, ...B.items]) for (const ch of it.str) { const t = strongType(ch); if (t === 'R') rtl++; else if (t === 'L') ltr++; }
+    for (const l of block) for (const it of l.items) for (const ch of it.str) { const t = strongType(ch); if (t === 'R') rtl++; else if (t === 'L') ltr++; }
     const order = rtl && rtl >= ltr ? [...top].sort((a, b) => b.right - a.right) : top;
     const text = order
-      .map((t) => [t.items, ...bottom.filter((_, k) => under[k][0] === t).map((b) => b.items)].map((part) => lineText(part, true, rtlPage)).join(' '))
+      .map((t) => [t.items, ...below.flatMap((segs, k) => segs.filter((_, n) => homes[k][n][0] === t).map((b) => b.items))]
+        .map((part) => lineText(part, true, rtlPage)).join(' '))
       .join(' ');
-    rows[i] = { text, gap: B.gap, height: A.height, nextHeight: B.nextHeight };
-    rows[i + 1] = null;
+    const last = lines[j];
+    rows[i] = { text, gap: last.gap, height: A.height, nextHeight: last.nextHeight };
+    for (let k = i + 1; k <= j; k++) rows[k] = null;
   }
   return rows;
 }
